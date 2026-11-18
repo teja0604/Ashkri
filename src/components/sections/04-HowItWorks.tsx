@@ -1,8 +1,9 @@
 import React from 'react';
+import Link from 'next/link';
 import { Container } from '../layout/Container';
 import { Section } from '../layout/Section';
 import { SectionHeading } from '../ui/SectionHeading';
-import { ArrowRight, FileCheck, Users, Calculator, Code, Award } from 'lucide-react';
+import { FileCheck, Users, Calculator, Code, Award } from 'lucide-react';
 
 const HOMEPAGE_STEPS = [
   {
@@ -54,7 +55,7 @@ export function HowItWorksSection() {
         />
 
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6 relative">
-          {HOMEPAGE_STEPS.map((item, index) => {
+          {HOMEPAGE_STEPS.map((item) => {
             const Icon = item.icon;
             return (
               <div
@@ -84,10 +85,10 @@ export function HowItWorksSection() {
 
         <div className="mt-8 text-center">
           <p className="text-xs sm:text-sm text-ink-secondary font-body">
-            Need comprehensive step-by-step breakdown of university deliverables?{' '}
-            <a href="#contact" className="text-accent-action font-semibold hover:underline">
-              Consult with our engineering leads →
-            </a>
+            Need the comprehensive 6-stage lifecycle detailing deliverables and milestones?{' '}
+            <Link href="/how-it-works" className="text-accent-action font-semibold hover:underline">
+              Explore the full How It Works guide →
+            </Link>
           </p>
         </div>
       </Container>

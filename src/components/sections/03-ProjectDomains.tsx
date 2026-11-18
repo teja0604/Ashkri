@@ -3,7 +3,7 @@ import { Container } from '../layout/Container';
 import { Section } from '../layout/Section';
 import { SectionHeading } from '../ui/SectionHeading';
 import { Card } from '../ui/Card';
-import { Badge } from '../ui/Badge';
+import { Button } from '../ui/Button';
 import { Terminal, Database, Sparkles, Radio, Zap, Wifi, Cpu } from 'lucide-react';
 
 const ENGINEERING_DOMAINS = [
@@ -62,12 +62,18 @@ export function ProjectDomainsSection() {
   return (
     <Section id="domains" spacing="default" className="border-b border-seam-subtle bg-surface-elevated/40">
       <Container>
-        <SectionHeading
-          eyebrow="Engineering Specializations"
-          title="Find the Right Direction"
-          serifAccent="for Your Project."
-          description="Qualified mentorship across seven core technical engineering domains. We only support architectures where rigorous technical delivery capability is verified."
-        />
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 md:mb-14 gap-6">
+          <SectionHeading
+            eyebrow="Engineering Specializations"
+            title="Find the Right Direction"
+            serifAccent="for Your Project."
+            description="Qualified mentorship across seven core technical engineering domains. We only support architectures where rigorous technical delivery capability is verified."
+            className="mb-0"
+          />
+          <Button variant="secondary" size="md" href="/project-domains" className="flex-shrink-0 self-start md:self-end">
+            Explore All Domains →
+          </Button>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {ENGINEERING_DOMAINS.map((domain) => {
@@ -128,4 +134,3 @@ export function ProjectDomainsSection() {
     </Section>
   );
 }
-

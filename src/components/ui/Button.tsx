@@ -6,6 +6,8 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   variant?: 'primary' | 'secondary' | 'ghost' | 'brass';
   size?: 'sm' | 'md' | 'lg';
   href?: string;
+  target?: string;
+  rel?: string;
   className?: string;
   children: React.ReactNode;
 }
@@ -16,6 +18,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       variant = 'primary',
       size = 'md',
       href,
+      target,
+      rel,
       className = '',
       children,
       disabled,
@@ -47,6 +51,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       return (
         <a
           href={href}
+          target={target}
+          rel={rel}
           className={`${baseStyles} ${sizeStyles} ${variantStyles} ${className}`}
         >
           {children}

@@ -6,7 +6,7 @@ import { ArrowRight, Send, MessageCircle } from 'lucide-react';
 
 export function FinalCTASection() {
   return (
-    <Section id="contact" spacing="default" className="border-b border-seam-subtle bg-surface-elevated/40">
+    <Section id="cta" spacing="default" className="border-b border-seam-subtle bg-surface-elevated/40">
       <Container>
         <div className="relative rounded-2xl bg-gradient-to-br from-[#121A22] to-[#1E2833] text-white p-8 sm:p-12 md:p-16 border border-[#394651] shadow-editorial-elevated overflow-hidden">
           {/* Subtle architectural background accents */}
@@ -39,10 +39,10 @@ export function FinalCTASection() {
               <Button
                 variant="brass"
                 size="lg"
-                href="mailto:contact@ashkri.com?subject=Project%20Enquiry%20-%20ASHKRI%20Academic%20Solutions"
+                href="/contact"
                 className="w-full sm:w-auto"
               >
-                <Send className="w-4 h-4 mr-1" />
+                <Send className="w-4 h-4 mr-1.5" />
                 Submit Project Requirements
               </Button>
               <a

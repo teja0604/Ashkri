@@ -24,8 +24,8 @@ test.describe('ASHKRI Academic Solutions - Homepage Foundation & Responsive Suit
     await expect(page.locator('#work')).toBeVisible();
     await expect(page.locator('#pricing')).toBeVisible();
     await expect(page.locator('#why-ashkri')).toBeVisible();
-    await expect(page.locator('#testimonials')).toBeVisible();
-    await expect(page.locator('#contact')).toBeVisible();
+    await expect(page.locator('#mentorship-standards')).toBeVisible();
+    await expect(page.locator('#cta')).toBeVisible();
   });
 
   test('theme switcher toggles between light and dark modes', async ({ page }) => {

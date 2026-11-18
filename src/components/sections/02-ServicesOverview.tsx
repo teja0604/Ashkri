@@ -70,15 +70,21 @@ export function ServicesOverviewSection() {
   return (
     <Section id="services" spacing="default" className="border-b border-seam-subtle">
       <Container>
-        <SectionHeading
-          eyebrow="Technical Services"
-          title="Technical Expertise."
-          serifAccent="Practical Guidance."
-          description="Comprehensive engineering guidance structured to support students from initial concept inception through final viva defense."
-        />
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 md:mb-14 gap-6">
+          <SectionHeading
+            eyebrow="Technical Services"
+            title="Technical Expertise."
+            serifAccent="Practical Guidance."
+            description="Comprehensive engineering guidance structured to support students from initial concept inception through final viva defense."
+            className="mb-0"
+          />
+          <Button variant="secondary" size="md" href="/services" className="flex-shrink-0 self-start md:self-end">
+            View All 7 Services →
+          </Button>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
-          {HOMEPAGE_SERVICES.map((service, index) => {
+          {HOMEPAGE_SERVICES.map((service) => {
             const Icon = service.icon;
             return (
               <Card
@@ -121,7 +127,7 @@ export function ServicesOverviewSection() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    href="#contact"
+                    href="/contact"
                     className="w-full justify-between text-accent-action group-hover:bg-accent-action/10"
                   >
                     <span>Request Details</span>
