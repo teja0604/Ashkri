@@ -31,6 +31,16 @@ export default function RefundPolicyPage() {
       <Section spacing="default" className="border-b border-seam-subtle">
         <Container>
           <div className="max-w-3xl mx-auto space-y-8 text-sm text-ink-secondary font-body leading-relaxed">
+            {/* Ratification Notice Banner */}
+            <div className="p-4 rounded-editorial bg-surface-elevated border border-accent-brass/40 text-ink-primary text-xs sm:text-sm font-body leading-relaxed">
+              <span className="font-heading font-bold text-accent-brass uppercase tracking-wider text-xs block mb-1">
+                Notice of Commercial Policy Ratification
+              </span>
+              <p className="text-ink-secondary">
+                Commercial refund percentages and timelines presented below are proposed terms subject to formal business ratification prior to commercial checkout activation in subsequent phases.
+              </p>
+            </div>
+
             <div className="space-y-3">
               <h2 className="text-lg font-heading font-bold text-ink-primary">
                 1. Milestone-Gated Protection

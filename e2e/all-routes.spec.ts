@@ -53,8 +53,9 @@ test.describe('Phase 2 — Full 12-Route Platform Verification', () => {
     await submitBtn.click();
 
     // Verify Phase 2 boundary confirmation message
-    await expect(page.locator('text=Your Project Enquiry is Ready for Transmission')).toBeVisible();
-    await expect(page.locator('text=Send via Email to contact@ashkri.com')).toBeVisible();
+    await expect(page.locator('text=Your enquiry is ready to send')).toBeVisible();
+    await expect(page.getByRole('link', { name: /Send via Email/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Copy Enquiry Summary/i })).toBeVisible();
   });
 
   test('faq accordion toggles correctly with keyboard and mouse', async ({ page }) => {

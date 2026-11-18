@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/Button';
-import { Send, CheckCircle2, MessageCircle, Mail, AlertCircle } from 'lucide-react';
+import { Send, CheckCircle2, MessageCircle, Mail, Copy, Check } from 'lucide-react';
 
 interface FormData {
   studentName: string;
@@ -39,6 +39,7 @@ export function ContactForm() {
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const validate = (): boolean => {
     const errs: FormErrors = {};
@@ -78,66 +79,107 @@ export function ContactForm() {
     }
   };
 
-  const mailtoBody = encodeURIComponent(
+  const summaryText =
     `ASHKRI Academic Solutions - Project Consultation Request\n\n` +
-      `Student Name: ${formData.studentName}\n` +
-      `Email: ${formData.email}\n` +
-      `Phone/WhatsApp: ${formData.phone}\n` +
-      `College: ${formData.college}\n` +
-      `Department: ${formData.department}\n` +
-      `Domain: ${formData.domain}\n` +
-      `Required Service: ${formData.service}\n` +
-      `Budget Range: ${formData.approxBudget}\n` +
-      `Deadline: ${formData.expectedDeadline || 'Flexible'}\n\n` +
-      `Project Description:\n${formData.description}\n`
-  );
+    `Student Name: ${formData.studentName}\n` +
+    `Email: ${formData.email}\n` +
+    `Phone/WhatsApp: ${formData.phone}\n` +
+    `College: ${formData.college}\n` +
+    `Department: ${formData.department}\n` +
+    `Domain: ${formData.domain}\n` +
+    `Required Service: ${formData.service}\n` +
+    `Budget Range: ${formData.approxBudget}\n` +
+    `Deadline: ${formData.expectedDeadline || 'Flexible'}\n\n` +
+    `Project Description:\n${formData.description}\n`;
+
+  const mailtoBody = encodeURIComponent(summaryText);
+
+  const handleCopySummary = async () => {
+    try {
+      await navigator.clipboard.writeText(summaryText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
+    } catch {
+      // clipboard fallback
+    }
+  };
 
   if (isSubmitted) {
     return (
-      <div className="p-8 rounded-editorial bg-surface-elevated border border-seam-strong text-center space-y-6">
+      <div className="p-6 sm:p-8 rounded-editorial bg-surface-elevated border border-seam-strong text-center space-y-6">
         <div className="w-14 h-14 rounded-full bg-status-success/15 border border-status-success/30 flex items-center justify-center text-status-success mx-auto">
           <CheckCircle2 className="w-8 h-8" />
         </div>
 
         <div>
           <span className="text-xs font-heading font-extrabold uppercase tracking-widest text-accent-brass block mb-2">
-            Validation Successful
+            Validation Complete · Ready to Dispatch
           </span>
           <h3 className="text-xl sm:text-2xl font-heading font-bold text-ink-primary mb-3">
-            Your Project Enquiry is Ready for Transmission
+            Your enquiry is ready to send
           </h3>
           <p className="text-xs sm:text-sm text-ink-secondary max-w-lg mx-auto font-body leading-relaxed">
-            In accordance with our Phase 2 release boundary, online PostgreSQL persistence activates in Phase 3. Your validated enquiry details have been pre-compiled. Select your preferred transmission channel below:
+            Your consultation request has been validated. Online automatic database transmission activates in Phase 3. To ensure you never lose entered information, copy your summary below or dispatch it directly through our verified channels:
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+        {/* Pre-compiled Summary Box */}
+        <div className="text-left bg-surface-primary border border-seam-subtle rounded-editorial p-4 max-h-48 overflow-y-auto font-mono text-xs text-ink-secondary whitespace-pre-wrap select-all">
+          {summaryText}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={handleCopySummary}
+            type="button"
+          >
+            {copied ? (
+              <>
+                <Check className="w-4 h-4 mr-2 text-status-success" />
+                Copied to Clipboard!
+              </>
+            ) : (
+              <>
+                <Copy className="w-4 h-4 mr-2 text-accent-brass" />
+                Copy Enquiry Summary
+              </>
+            )}
+          </Button>
+
           <Button
             variant="primary"
-            size="lg"
+            size="md"
             href={`mailto:contact@ashkri.com?subject=Project%20Enquiry%20-%20${encodeURIComponent(
               formData.studentName
             )}&body=${mailtoBody}`}
           >
             <Mail className="w-4 h-4 mr-2" />
-            Send via Email to contact@ashkri.com
+            Send via Email
           </Button>
 
           <Button
             variant="secondary"
-            size="lg"
+            size="md"
             href="https://t.me/Ashkri_Technologies"
             target="_blank"
             rel="noopener noreferrer"
           >
             <MessageCircle className="w-4 h-4 mr-2 text-accent-brass" />
-            Connect via Official Telegram
+            Connect via Telegram
           </Button>
+        </div>
+
+        <div className="pt-2 border-t border-seam-subtle">
+          <p className="text-xs text-ink-secondary/80 font-body">
+            Please verify outgoing messages are addressed to our primary business email: <span className="text-ink-primary font-mono font-medium">contact@ashkri.com</span>. Our technical mentors review requests within 24 hours.
+          </p>
         </div>
 
         <button
           onClick={() => setIsSubmitted(false)}
-          className="text-xs text-ink-secondary/70 hover:text-ink-primary underline font-body pt-2 block mx-auto"
+          className="text-xs text-ink-secondary/70 hover:text-ink-primary underline font-body pt-1 block mx-auto"
         >
           ← Edit form responses
         </button>

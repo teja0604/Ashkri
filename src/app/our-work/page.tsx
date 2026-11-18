@@ -16,33 +16,33 @@ const DEMONSTRATION_PROJECTS = [
   {
     id: 'plant-pathology-node',
     title: 'Autonomous Agricultural Telemetry & Edge Inference Node',
-    classification: 'Architectural Prototype',
+    classification: 'Conceptual Engineering Demonstration',
     domain: 'AI, Embedded & IoT',
     techStack: ['PyTorch', 'MobileNetV3', 'ESP32', 'FreeRTOS', 'MQTT', 'Next.js', 'PostgreSQL'],
     problemStatement:
-      'Rural farmers experience catastrophic crop loss due to delayed diagnosis of leaf fungal blights. Commercial cloud-only vision services are inaccessible due to inconsistent cellular connectivity in agricultural fields.',
+      'Rural farmers experience crop loss due to delayed diagnosis of leaf fungal blights. Commercial cloud-only vision services are frequently hindered by inconsistent cellular connectivity in agricultural fields.',
     engineeredSolution:
-      'A low-power hardware prototype integrating a 2MP camera module with a dual-core ESP32. A quantized lightweight convolutional neural network runs on-device inference for immediate offline alerting, with secondary asynchronous synchronization to an editorial web dashboard when cellular signal resumes.',
+      'A low-power hardware design integrating an image sensor module with a dual-core ESP32. A quantized lightweight convolutional neural network is proposed for on-device inference for immediate alerting, with secondary asynchronous synchronization to an editorial web dashboard when cellular connectivity is established.',
     keyFeatures: [
-      'Quantized INT8 neural model running directly on low-power edge silicon',
-      'Solar-powered charging circuit with FreeRTOS deep-sleep power management',
-      'MQTT telemetry queue with offline flash memory buffer',
-      'Web management dashboard with geospatial plot mapping',
+      'Quantized INT8 neural model specification for low-power edge silicon',
+      'Solar-powered charging circuit design with FreeRTOS deep-sleep power states',
+      'MQTT telemetry queue architecture with offline flash memory buffer design',
+      'Web management dashboard with geospatial plot mapping interface',
     ],
     ashkriMentorshipRole:
       'Architectural formulation, quantization pipeline scripting, FreeRTOS task scheduling, schematic verification, and LaTeX IEEE paper structure.',
-    status: 'Verified Working Prototype',
+    status: 'Architectural Prototype',
   },
   {
     id: 'medical-appointment-vault',
     title: 'High-Concurrency Medical Appointment & Record Vault',
-    classification: 'Full-Stack Software Prototype',
+    classification: 'Proposed Technical Architecture',
     domain: 'CSE & Cloud Architecture',
     techStack: ['Next.js 14', 'TypeScript', 'Node.js', 'PostgreSQL', 'Prisma', 'Redis', 'Docker'],
     problemStatement:
       'Outpatient hospital departments (OPDs) face extreme database lock contention during 8:00 AM booking windows, resulting in double-allocated consultation tokens and server crashes.',
     engineeredSolution:
-      'A resilient web system employing Redis-based distributed token buckets for request rate throttling, combined with PostgreSQL row-level optimistic concurrency locking. Patient records are segregated with field-level cryptographic salting to demonstrate compliance with modern medical data privacy standards.',
+      'A resilient web system design employing Redis-based distributed token buckets for request rate throttling, combined with PostgreSQL row-level optimistic concurrency locking. Patient records are segregated with field-level cryptographic salting to demonstrate compliance with modern medical data privacy standards.',
     keyFeatures: [
       'Atomic Redis reservation lock preventing duplicate appointment token generation',
       'Type-safe relational database schema with automated migration history',
@@ -51,38 +51,38 @@ const DEMONSTRATION_PROJECTS = [
     ],
     ashkriMentorshipRole:
       'System design, database normalization, concurrency test script generation, API validation, and oral examination viva coaching.',
-    status: 'Verified Software Architecture',
+    status: 'Proposed Technical Architecture',
   },
   {
     id: 'spectral-vibration-node',
     title: 'Industrial Motor Telemetry & FFT Vibration Spectral Node',
-    classification: 'Hardware & DSP Prototype',
+    classification: 'Conceptual Engineering Demonstration',
     domain: 'Embedded Systems & ECE',
     techStack: ['STM32 (ARM Cortex-M4)', 'Embedded C', 'CMSIS-DSP', 'CAN Bus 2.0B', 'Python (Telemetry GUI)'],
     problemStatement:
       'Factory induction motors suffer abrupt bearing failures, creating unplanned manufacturing downtime. Traditional scheduled maintenance fails to catch early micro-vibration harmonic anomalies.',
     engineeredSolution:
-      'An embedded diagnostic node utilizing an industrial 3-axis accelerometer interfaced to an STM32 ARM Cortex-M4 microcontroller. The hardware utilizes the on-chip floating-point unit (FPU) to compute real-time Fast Fourier Transform (FFT) frequency spectrums, transmitting harmonic alert frames over an industrial CAN bus network.',
+      'An embedded diagnostic node design utilizing an industrial 3-axis accelerometer interfaced to an STM32 ARM Cortex-M4 microcontroller. The hardware architecture utilizes the on-chip floating-point unit (FPU) to compute real-time Fast Fourier Transform (FFT) frequency spectrums, transmitting harmonic alert frames over an industrial CAN bus network.',
     keyFeatures: [
-      'High-speed ADC DMA sampling at 2.5kHz with double-buffering',
+      'High-speed ADC DMA sampling architecture with double-buffering',
       'CMSIS-DSP hardware-accelerated 1024-point real FFT computation',
       'Prioritized CAN 2.0B identifier frames for immediate emergency shutdown signals',
       'Desktop Python/PyQt diagnostic interface visualizing live frequency spectrums',
     ],
     ashkriMentorshipRole:
       'DSP algorithm porting, DMA buffer configuration, CAN transceiver circuit design, and formal academic thesis documentation.',
-    status: 'Verified Working Prototype',
+    status: 'Conceptual Engineering Demonstration',
   },
   {
     id: 'privacy-preserving-rag',
     title: 'Domain-Restricted Retrieval-Augmented Generation (RAG) Engine',
-    classification: 'AI & Data Science Prototype',
+    classification: 'Proposed Technical Architecture',
     domain: 'AI & Data Engineering',
     techStack: ['Python', 'FastAPI', 'ChromaDB', 'Hugging Face', 'LangChain', 'React'],
     problemStatement:
       'Organizations cannot use public cloud LLMs for sensitive internal manuals due to IP leaks and widespread hallucinations when queried on precise engineering specifications.',
     engineeredSolution:
-      'A self-hosted, localized retrieval engine pairing a vector embedding database with an open-weights small language model. Incoming queries are semantically matched against local PDF manuals, returning exact cited page references with zero internet telemetry.',
+      'A self-hosted, localized retrieval engine design pairing a vector embedding database with an open-weights small language model. Incoming queries are semantically matched against local PDF manuals, returning exact cited page references with zero internet telemetry.',
     keyFeatures: [
       'Recursive character document chunking with metadata preservation',
       'Cosine similarity vector search with configurable relevance thresholding',
@@ -91,7 +91,7 @@ const DEMONSTRATION_PROJECTS = [
     ],
     ashkriMentorshipRole:
       'Embedding model selection, vector indexing optimization, citation validation logic, and presentation deck design.',
-    status: 'Verified Software Architecture',
+    status: 'Proposed Technical Architecture',
   },
 ];
 
@@ -112,7 +112,7 @@ export default function OurWorkPage() {
               </span>
             </h1>
             <p className="text-base sm:text-lg text-ink-secondary leading-relaxed font-body">
-              Every project below represents an authentic architectural prototype built to illustrate modular design, industry-standard toolchains, and complete academic deliverables. We distinguish prototypes from private client work.
+              The projects below represent proposed technical architectures and conceptual engineering demonstrations developed to illustrate modular design, industry-standard toolchains, and comprehensive academic deliverables. We clearly distinguish conceptual designs from verified client implementations.
             </p>
           </div>
         </Container>
