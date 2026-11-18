@@ -1,0 +1,73 @@
+/* ASHKRI Academic Solutions - Semantic Design Tokens */
+/* Modern Editorial x Midnight Ink */
+
+:root {
+  /* Light Theme (Warm Paper) */
+  --bg-primary: #F4F1EA;
+  --surface-primary: #FFFFFF;
+  --surface-elevated: #FAF8F5;
+
+  /* Typography / Ink */
+  --text-primary: #202B35;
+  --text-secondary: #59616A;
+  --text-inverse: #F0ECE4;
+
+  /* Borders & Seams */
+  --border-subtle: #E6DED1;
+  --border-strong: #D5CBBC;
+
+  /* Accents & Brand */
+  --accent-terracotta: #B65F43;
+  --accent-action: #B45B40; /* WCAG 2.2 AA Certified 4.66:1 vs #FFFFFF */
+  --accent-action-hover: #9E4D34;
+  --accent-brass: #C1A16B;
+  --accent-brass-hover: #AF8F59;
+
+  /* Focus & Controls */
+  --focus-ring: #B45B40;
+  --input-bg: #FFFFFF;
+  --input-border: #D5CBBC;
+  --input-focus-border: #B45B40;
+
+  /* Status Tokens */
+  --status-success: #2A6B48;
+  --status-warning: #946800;
+  --status-error: #B3261E;
+  --status-info: #1D5C8A;
+}
+
+[data-theme="dark"] {
+  /* Dark Theme (Deep Night) */
+  --bg-primary: #121A22;
+  --surface-primary: #202B35;
+  --surface-elevated: #283641;
+
+  /* Typography / Ink */
+  --text-primary: #F0ECE4;
+  --text-secondary: #B9C1C8;
+  --text-inverse: #121A22;
+
+  /* Borders & Seams */
+  --border-subtle: #394651;
+  --border-strong: #4B5B69;
+
+  /* Accents & Brand */
+  --accent-terracotta: #C77A5E;
+  --accent-action: #C77A5E; /* In dark mode, pair with #121A22 text for 5.33:1 contrast */
+  --accent-action-hover: #D88C70;
+  --accent-brass: #C6AC7C;
+  --accent-brass-hover: #D5BC8E;
+
+  /* Focus & Controls */
+  --focus-ring: #C6AC7C;
+  --input-bg: #1B252E;
+  --input-border: #3E4B57;
+  --input-focus-border: #C6AC7C;
+
+  /* Status Tokens */
+  --status-success: #3E8E62;
+  --status-warning: #C2931D;
+  --status-error: #E0524C;
+  --status-info: #3A81B8;
+}
+
