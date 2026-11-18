@@ -70,5 +70,51 @@ test.describe('ASHKRI Academic Solutions - Homepage Foundation & Responsive Suit
 
     expect(accessibilityScanResults.violations).toEqual([]);
   });
+
+  test('interactive cards tilt subtly in all four pointer directions and maintain grid stability', async ({ page }) => {
+    await page.goto('/');
+
+    // Locate first service card using data-card attribute and scroll into view
+    const firstCard = page.locator('#services [data-card="true"]').first();
+    await expect(firstCard).toBeVisible();
+    await firstCard.scrollIntoViewIfNeeded();
+
+    const box = await firstCard.boundingBox();
+    if (!box) throw new Error('First card bounding box not found');
+
+    // 1. Hover on Left side (X: 15%, Y: 50%)
+    await firstCard.hover({ position: { x: box.width * 0.15, y: box.height * 0.5 } });
+    await page.waitForTimeout(150);
+    const leftTransform = await firstCard.evaluate((el) => (el as HTMLElement).style.transform);
+    expect(leftTransform).toContain('perspective');
+    expect(leftTransform).toContain('rotateY(-');
+
+    // 2. Hover on Right side (X: 85%, Y: 50%)
+    await firstCard.hover({ position: { x: box.width * 0.85, y: box.height * 0.5 } });
+    await page.waitForTimeout(150);
+    const rightTransform = await firstCard.evaluate((el) => (el as HTMLElement).style.transform);
+    expect(rightTransform).toContain('perspective');
+    expect(rightTransform).toContain('rotateY(');
+    expect(rightTransform).not.toContain('rotateY(-');
+
+    // 3. Hover on Top side (X: 50%, Y: 15%)
+    await firstCard.hover({ position: { x: box.width * 0.5, y: box.height * 0.15 } });
+    await page.waitForTimeout(150);
+    const topTransform = await firstCard.evaluate((el) => (el as HTMLElement).style.transform);
+    expect(topTransform).toContain('rotateX(');
+    expect(topTransform).not.toContain('rotateX(-');
+
+    // 4. Hover on Bottom side (X: 50%, Y: 85%)
+    await firstCard.hover({ position: { x: box.width * 0.5, y: box.height * 0.85 } });
+    await page.waitForTimeout(150);
+    const bottomTransform = await firstCard.evaluate((el) => (el as HTMLElement).style.transform);
+    expect(bottomTransform).toContain('rotateX(-');
+
+    // 5. Leave card - pointer moved away to headline
+    await page.locator('h1').hover();
+    await page.waitForTimeout(200);
+    const resetTransform = await firstCard.evaluate((el) => (el as HTMLElement).style.transform);
+    expect(resetTransform === '' || resetTransform.includes('0deg')).toBe(true);
+  });
 });
 

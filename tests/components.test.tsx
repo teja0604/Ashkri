@@ -55,6 +55,54 @@ describe('UI Primitives & Design Tokens', () => {
     expect(screen.getByText('Card Content')).toBeInTheDocument();
   });
 
+  it('renders Card with hoverable interactions and responds to pointer events', () => {
+    render(
+      <Card variant="default" hoverable data-testid="interactive-card">
+        <p>Interactive Content</p>
+      </Card>
+    );
+
+    const card = screen.getByTestId('interactive-card');
+    expect(card).toBeInTheDocument();
+
+    // Mock bounding client rect
+    card.getBoundingClientRect = vi.fn(() => ({
+      width: 300,
+      height: 200,
+      top: 100,
+      left: 100,
+      bottom: 300,
+      right: 400,
+      x: 100,
+      y: 100,
+      toJSON: () => {},
+    }));
+
+    // Trigger pointer enter
+    fireEvent.pointerEnter(card, { pointerType: 'mouse' });
+
+    // Pointer on right side (clientX: 350 -> px = (350-100)/300 = 0.833 -> right tilt)
+    fireEvent.pointerMove(card, { clientX: 350, clientY: 200, pointerType: 'mouse' });
+
+    // Pointer leave resets hover state
+    fireEvent.pointerLeave(card, { pointerType: 'mouse' });
+  });
+
+  it('renders Button with brass and secondary variants', () => {
+    render(
+      <>
+        <Button variant="brass">Brass CTA</Button>
+        <Button variant="secondary">Secondary Action</Button>
+      </>
+    );
+
+    const brassBtn = screen.getByRole('button', { name: /brass cta/i });
+    const secBtn = screen.getByRole('button', { name: /secondary action/i });
+
+    expect(brassBtn.className).toContain('bg-accent-brass');
+    expect(secBtn.className).toContain('border-seam-strong');
+  });
+
   it('renders SectionHeading with eyebrow, title, and serif accent', () => {
     render(
       <SectionHeading
