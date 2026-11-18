@@ -50,12 +50,13 @@ test.describe('Phase 2 — Full 12-Route Platform Verification', () => {
     await page.check('input[type="checkbox"]');
 
     // Submit valid form
+    await submitBtn.scrollIntoViewIfNeeded();
     await submitBtn.click();
 
-    // Verify Phase 2 boundary confirmation message
-    await expect(page.locator('text=Your enquiry is ready to send')).toBeVisible();
-    await expect(page.getByRole('link', { name: /Send via Email/i })).toBeVisible();
+    // Verify Phase 3 backend enquiry confirmation message and reference number
+    await expect(page.locator('text=Your enquiry has been successfully logged')).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('button', { name: /Copy Enquiry Summary/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Email Coordinator|Send via Email/i })).toBeVisible();
   });
 
   test('faq accordion toggles correctly with keyboard and mouse', async ({ page }) => {

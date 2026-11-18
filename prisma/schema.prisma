@@ -1,0 +1,123 @@
+// ASHKRI ACADEMIC SOLUTIONS
+// Master Prisma Database Schema — Phase 3 (Backend & Enquiry Infrastructure)
+// Optimized for Neon PostgreSQL (ap-southeast-1)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// -------------------------------------------------------------
+// ENUMS
+// -------------------------------------------------------------
+
+enum EnquiryStatus {
+  NEW
+  CONTACTED
+  DISCUSSION_IN_PROGRESS
+  QUOTATION_SENT
+  AWAITING_CONFIRMATION
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// -------------------------------------------------------------
+// CORE ENQUIRY ENTITIES (PHASE 3)
+// -------------------------------------------------------------
+
+model Enquiry {
+  id               String        @id @default(uuid())
+  referenceNumber  String        @unique // Format: ASH-YYYYMM-XXXX
+  studentName      String        @db.VarChar(120)
+  email            String        @db.VarChar(255)
+  phone            String        @db.VarChar(20)
+  college          String        @db.VarChar(200)
+  department       String        @db.VarChar(100)
+  domain           String        @db.VarChar(100)
+  service          String        @db.VarChar(100)
+  projectTitle     String?       @db.VarChar(255)
+  description      String        @db.Text
+  approxBudget     String?       @db.VarChar(50) // e.g. "₹6,000 – ₹10,000"
+  expectedDeadline DateTime?
+  status           EnquiryStatus @default(NEW)
+  consentGiven     Boolean       @default(false)
+  ipHash           String?       @db.VarChar(64) // SHA-256 hash of IP + salt for rate-limiting
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  // Relationships
+  notes         EnquiryNote[]
+  attachments   EnquiryAttachment[]
+  statusHistory EnquiryStatusHistory[]
+  emailEvents   EmailEvent[]
+
+  @@index([email])
+  @@index([status])
+  @@index([domain])
+  @@index([createdAt])
+}
+
+model EnquiryStatusHistory {
+  id          String        @id @default(uuid())
+  enquiryId   String
+  fromStatus  EnquiryStatus
+  toStatus    EnquiryStatus
+  changedById String?       @db.VarChar(100) // Admin user ID
+  changedAt   DateTime      @default(now())
+  reason      String?       @db.VarChar(255)
+
+  enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  @@index([enquiryId])
+}
+
+model EnquiryNote {
+  id         String   @id @default(uuid())
+  enquiryId  String
+  authorId   String?  @db.VarChar(100)
+  authorName String   @db.VarChar(100)
+  noteText   String   @db.Text
+  isInternal Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  @@index([enquiryId])
+}
+
+model EnquiryAttachment {
+  id           String   @id @default(uuid())
+  enquiryId    String
+  originalName String   @db.VarChar(255)
+  storageKey   String   @unique // Private S3/R2 storage path (UUID-based)
+  mimeType     String   @db.VarChar(100)
+  sizeBytes    Int
+  checksum     String   @db.VarChar(64) // SHA-256 hash of file content
+  uploadedAt   DateTime @default(now())
+
+  enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  @@index([enquiryId])
+}
+
+model EmailEvent {
+  id           String   @id @default(uuid())
+  enquiryId    String
+  recipient    String   @db.VarChar(255)
+  subject      String   @db.VarChar(255)
+  templateName String   @db.VarChar(50)
+  delivered    Boolean  @default(false)
+  errorReason  String?  @db.Text
+  sentAt       DateTime @default(now())
+
+  enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  @@index([enquiryId])
+}

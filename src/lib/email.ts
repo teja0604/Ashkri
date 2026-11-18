@@ -1,0 +1,254 @@
+import { getEmailConfig } from './env';
+import prisma from './prisma';
+import nodemailer from 'nodemailer';
+
+export interface EnquiryEmailData {
+  enquiryId: string;
+  referenceNumber: string;
+  studentName: string;
+  email: string;
+  phone: string;
+  college: string;
+  department: string;
+  domain: string;
+  service: string;
+  approxBudget?: string | null;
+  expectedDeadline?: Date | null;
+  description: string;
+  attachmentName?: string | null;
+}
+
+export interface SendEmailResult {
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Renders HTML email template for Admin Notification
+ */
+export function renderAdminNotificationHtml(data: EnquiryEmailData): string {
+  const deadlineStr = data.expectedDeadline
+    ? data.expectedDeadline.toISOString().split('T')[0]
+    : 'Flexible / Not Specified';
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>New Project Consultation Request - ${data.referenceNumber}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #0b0f19; color: #f1f5f9; padding: 24px; margin: 0; }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 8px; max-width: 600px; margin: 0 auto; padding: 32px; }
+    .badge { display: inline-block; padding: 4px 10px; font-size: 12px; font-weight: bold; background: #c29b38; color: #0b0f19; border-radius: 4px; margin-bottom: 16px; }
+    h1 { font-size: 20px; margin: 0 0 16px 0; color: #ffffff; }
+    .meta-table { width: 100%; border-collapse: collapse; margin-top: 16px; margin-bottom: 24px; font-size: 14px; }
+    .meta-table td { padding: 8px 0; border-bottom: 1px solid #1f2937; }
+    .meta-label { color: #94a3b8; width: 35%; font-weight: 500; }
+    .meta-value { color: #f8fafc; font-weight: 600; }
+    .description-box { background: #1a2234; border-left: 3px solid #c29b38; padding: 14px; border-radius: 4px; font-size: 14px; color: #e2e8f0; white-space: pre-wrap; line-height: 1.6; }
+    .footer { margin-top: 24px; font-size: 12px; color: #64748b; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">NEW ENQUIRY</span>
+    <h1>Project Consultation Request</h1>
+    <table class="meta-table">
+      <tr><td class="meta-label">Reference ID:</td><td class="meta-value">${data.referenceNumber}</td></tr>
+      <tr><td class="meta-label">Student Name:</td><td class="meta-value">${data.studentName}</td></tr>
+      <tr><td class="meta-label">Email:</td><td class="meta-value">${data.email}</td></tr>
+      <tr><td class="meta-label">Phone / WhatsApp:</td><td class="meta-value">${data.phone}</td></tr>
+      <tr><td class="meta-label">College / University:</td><td class="meta-value">${data.college}</td></tr>
+      <tr><td class="meta-label">Department:</td><td class="meta-value">${data.department}</td></tr>
+      <tr><td class="meta-label">Domain:</td><td class="meta-value">${data.domain}</td></tr>
+      <tr><td class="meta-label">Required Service:</td><td class="meta-value">${data.service}</td></tr>
+      <tr><td class="meta-label">Estimated Budget:</td><td class="meta-value">${data.approxBudget || 'Standard Pricing'}</td></tr>
+      <tr><td class="meta-label">Target Deadline:</td><td class="meta-value">${deadlineStr}</td></tr>
+      ${data.attachmentName ? `<tr><td class="meta-label">Attachment:</td><td class="meta-value">${data.attachmentName}</td></tr>` : ''}
+    </table>
+    <div style="font-weight: 600; font-size: 13px; color: #94a3b8; margin-bottom: 8px;">Project Scope & Proposal:</div>
+    <div class="description-box">${data.description}</div>
+    <div class="footer">ASHKRI Academic Solutions — Commercial Engineering Mentoring Platform</div>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Renders HTML email template for Student Acknowledgment
+ */
+export function renderStudentAcknowledgmentHtml(data: EnquiryEmailData): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Enquiry Received - ${data.referenceNumber}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f8fafc; color: #1e293b; padding: 24px; margin: 0; }
+    .card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; max-width: 580px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 20px; }
+    .brand { font-size: 16px; font-weight: 800; letter-spacing: 0.05em; color: #0f172a; text-transform: uppercase; }
+    .subbrand { font-size: 12px; color: #64748b; font-weight: 500; }
+    h1 { font-size: 20px; color: #0f172a; margin-top: 16px; }
+    p { font-size: 14px; line-height: 1.6; color: #334155; }
+    .ref-box { background: #f1f5f9; border-radius: 6px; padding: 16px; margin: 20px 0; text-align: center; }
+    .ref-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; font-weight: bold; }
+    .ref-number { font-size: 22px; font-weight: bold; font-family: monospace; color: #0f172a; margin-top: 4px; }
+    .sla-badge { display: inline-block; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; border-radius: 4px; padding: 4px 8px; font-size: 12px; font-weight: 600; margin-top: 8px; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="brand">ASHKRI Academic Solutions</div>
+      <div class="subbrand">Commercial Engineering Mentoring & Project Architecture</div>
+    </div>
+    <h1>Dear ${data.studentName},</h1>
+    <p>We have successfully received your project consultation request. An engineering coordinator is currently evaluating your technical scope, rubrics, and deliverables.</p>
+    
+    <div class="ref-box">
+      <div class="ref-label">Your Tracking Reference Number</div>
+      <div class="ref-number">${data.referenceNumber}</div>
+      <div class="sla-badge">✓ Guaranteed Review Within 24 Hours (Mon – Sat)</div>
+    </div>
+
+    <p><strong>Next Steps:</strong></p>
+    <ul style="font-size: 14px; color: #334155; line-height: 1.6;">
+      <li>Our technical lead will review your requirements against academic standards.</li>
+      <li>We will contact you via WhatsApp (<code>${data.phone}</code>) or email with an initial feasibility roadmap and milestone quotation.</li>
+    </ul>
+
+    <p>If you have urgent queries or additional IEEE reference papers, you can reach out directly via Telegram at <a href="https://t.me/Ashkri_Technologies" style="color: #0284c7;">@Ashkri_Technologies</a> citing your reference number above.</p>
+
+    <div class="footer">
+      ASHKRI Academic Solutions · A division of ASHKRI Technologies<br>
+      Strict Academic Confidentiality & Ethical Integrity Assured
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Dispatches an email via Resend API or SMTP
+ */
+async function transportEmail(
+  to: string,
+  subject: string,
+  html: string
+): Promise<SendEmailResult> {
+  const config = getEmailConfig();
+
+  // 1. If Resend API Key is provided, use Resend HTTP API
+  if (config.resendApiKey) {
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${config.resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: config.fromEmail,
+          to: [to],
+          subject,
+          html,
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        return { success: false, error: `Resend API error (${res.status}): ${text}` };
+      }
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: (err as Error).message };
+    }
+  }
+
+  // 2. If SMTP is configured, use Nodemailer
+  if (config.smtp) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: config.smtp.host,
+        port: config.smtp.port,
+        secure: config.smtp.port === 465,
+        auth:
+          config.smtp.user && config.smtp.pass
+            ? {
+                user: config.smtp.user,
+                pass: config.smtp.pass,
+              }
+            : undefined,
+      });
+
+      await transporter.sendMail({
+        from: config.fromEmail,
+        to,
+        subject,
+        html,
+      });
+
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: (err as Error).message };
+    }
+  }
+
+  // 3. Dev / Test fallback: Log cleanly without failing
+  if (process.env.NODE_ENV !== 'production') {
+    console.info(`[EMAIL SIMULATION] Sent to: ${to} | Subject: "${subject}"`);
+  }
+  return { success: true };
+}
+
+/**
+ * Dispatches notification emails for a newly created enquiry and logs events to PostgreSQL.
+ * Will NEVER throw errors to the caller or fail the enquiry submission.
+ */
+export async function sendEnquiryNotifications(data: EnquiryEmailData): Promise<void> {
+  const config = getEmailConfig();
+
+  // 1. Admin Alert Email
+  const adminSubject = `[Enquiry] ${data.referenceNumber} - ${data.studentName} (${data.department})`;
+  const adminHtml = renderAdminNotificationHtml(data);
+  const adminResult = await transportEmail(config.adminEmail, adminSubject, adminHtml);
+
+  // Log Admin Email Event in PostgreSQL
+  try {
+    await prisma.emailEvent.create({
+      data: {
+        enquiryId: data.enquiryId,
+        recipient: config.adminEmail,
+        subject: adminSubject,
+        templateName: 'ADMIN_NOTIFICATION',
+        delivered: adminResult.success,
+        errorReason: adminResult.error ?? null,
+      },
+    });
+  } catch (err) {
+    console.error('[DB EmailEvent Log Error - Admin]', (err as Error).message);
+  }
+
+  // 2. Student Acknowledgment Email
+  const studentSubject = `Consultation Request Received - Reference: ${data.referenceNumber}`;
+  const studentHtml = renderStudentAcknowledgmentHtml(data);
+  const studentResult = await transportEmail(data.email, studentSubject, studentHtml);
+
+  // Log Student Email Event in PostgreSQL
+  try {
+    await prisma.emailEvent.create({
+      data: {
+        enquiryId: data.enquiryId,
+        recipient: data.email,
+        subject: studentSubject,
+        templateName: 'STUDENT_ACKNOWLEDGMENT',
+        delivered: studentResult.success,
+        errorReason: studentResult.error ?? null,
+      },
+    });
+  } catch (err) {
+    console.error('[DB EmailEvent Log Error - Student]', (err as Error).message);
+  }
+}
