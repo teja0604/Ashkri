@@ -100,10 +100,12 @@ export function computeChecksum(buffer: Buffer): string {
 }
 
 /**
- * Sanitizes original filename to prevent path traversal and shell injection.
+ * Sanitizes original filename to prevent path traversal and shell injection across both POSIX and Windows.
  */
 export function sanitizeFilename(filename: string): string {
-  const base = path.basename(filename);
+  // Normalize Windows backslashes to forward slashes for cross-platform safety
+  const normalized = filename.replace(/\\/g, '/');
+  const base = path.posix.basename(normalized);
   return base.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
