@@ -1,0 +1,263 @@
+// ASHKRI ACADEMIC SOLUTIONS
+// Master Prisma Database Schema
+// Targets PostgreSQL 14+
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------------
+// ENUMS
+// -------------------------------------------------------------
+
+enum EnquiryStatus {
+  NEW
+  CONTACTED
+  DISCUSSION_IN_PROGRESS
+  QUOTATION_SENT
+  AWAITING_CONFIRMATION
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ProjectDomain {
+  CSE
+  IT
+  AI_DATA_SCIENCE
+  ECE
+  EEE
+  IOT
+  EMBEDDED_SYSTEMS
+}
+
+enum ServiceCategory {
+  PROJECT_CONSULTATION
+  SOFTWARE_DEVELOPMENT
+  AI_MACHINE_LEARNING
+  DATA_SCIENCE_ANALYTICS
+  HARDWARE_IOT
+  DOCUMENTATION_PRESENTATION
+  TECHNICAL_TRAINING
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  TECHNICAL_LEAD
+  PROJECT_COORDINATOR
+}
+
+enum PaymentMilestoneType {
+  BOOKING_ADVANCE      // 40%
+  INTERMEDIATE_DEMO    // 30%
+  FINAL_HANDOVER       // 30%
+  CUSTOM_MILESTONE
+}
+
+enum PaymentStatus {
+  PENDING
+  VERIFIED_RECEIVED
+  REFUNDED
+}
+
+// -------------------------------------------------------------
+// CORE ENQUIRY ENTITIES (PHASE 3)
+// -------------------------------------------------------------
+
+model Enquiry {
+  id               String               @id @default(uuid())
+  referenceNumber  String               @unique // Format: ASH-YYYYMM-XXXX
+  studentName      String               @db.VarChar(120)
+  email            String               @db.VarChar(255)
+  phone            String               @db.VarChar(20)
+  college          String               @db.VarChar(200)
+  department       String               @db.VarChar(100)
+  domain           ProjectDomain
+  service          ServiceCategory
+  projectTitle     String?              @db.VarChar(255)
+  description      String               @db.Text
+  approxBudget     String?              @db.VarChar(50) // e.g., "₹5,000 - ₹8,000"
+  expectedDeadline DateTime?
+  status           EnquiryStatus        @default(NEW)
+  consentGiven     Boolean              @default(false)
+  ipHash           String?              @db.VarChar(64) // For rate-limiting & abuse prevention
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  // Relationships
+  notes            EnquiryNote[]
+  attachments      EnquiryAttachment[]
+  statusHistory    EnquiryStatusHistory[]
+  emailEvents      EmailEvent[]
+  quotations       Quotation[]
+  milestones       ProjectMilestone[]
+  payments         PaymentRecord[]
+
+  @@index([email])
+  @@index([status])
+  @@index([domain])
+  @@index([createdAt])
+}
+
+model EnquiryStatusHistory {
+  id          String        @id @default(uuid())
+  enquiryId   String
+  fromStatus  EnquiryStatus
+  toStatus    EnquiryStatus
+  changedById String?       // Admin user ID
+  changedAt   DateTime      @default(now())
+  reason      String?       @db.VarChar(255)
+
+  enquiry     Enquiry       @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  @@index([enquiryId])
+}
+
+model EnquiryNote {
+  id          String    @id @default(uuid())
+  enquiryId   String
+  authorId    String    // Admin user ID
+  authorName  String    @db.VarChar(100)
+  noteText    String    @db.Text
+  isInternal  Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  enquiry     Enquiry   @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  @@index([enquiryId])
+}
+
+model EnquiryAttachment {
+  id           String   @id @default(uuid())
+  enquiryId    String
+  originalName String   @db.VarChar(255)
+  storageKey   String   @unique // Private S3/R2 storage path (UUID-based)
+  mimeType     String   @db.VarChar(100)
+  sizeBytes    Int
+  checksum     String   @db.VarChar(64)
+  uploadedAt   DateTime @default(now())
+
+  enquiry      Enquiry  @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  @@index([enquiryId])
+}
+
+model EmailEvent {
+  id           String   @id @default(uuid())
+  enquiryId    String
+  recipient    String   @db.VarChar(255)
+  subject      String   @db.VarChar(255)
+  templateName String   @db.VarChar(50)
+  delivered    Boolean  @default(false)
+  errorReason  String?  @db.Text
+  sentAt       DateTime @default(now())
+
+  enquiry      Enquiry  @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  @@index([enquiryId])
+}
+
+// -------------------------------------------------------------
+// ADMIN & COMMERCIAL ENTITIES (PHASE 4)
+// -------------------------------------------------------------
+
+model AdminUser {
+  id           String    @id @default(uuid())
+  email        String    @unique @db.VarChar(255)
+  passwordHash String    @db.VarChar(255)
+  fullName     String    @db.VarChar(100)
+  role         AdminRole @default(PROJECT_COORDINATOR)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Quotation {
+  id           String          @id @default(uuid())
+  enquiryId    String
+  quoteNumber  String          @unique // Format: QTE-YYYYMM-XXXX
+  version      Int             @default(1)
+  totalAmount  Decimal         @db.Decimal(10, 2)
+  notes        String?         @db.Text
+  validUntil   DateTime
+  isAccepted   Boolean         @default(false)
+  createdAt    DateTime        @default(now())
+
+  enquiry      Enquiry         @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  items        QuotationItem[]
+
+  @@index([enquiryId])
+}
+
+model QuotationItem {
+  id          String    @id @default(uuid())
+  quotationId String
+  description String    @db.VarChar(255)
+  quantity    Int       @default(1)
+  unitPrice   Decimal   @db.Decimal(10, 2)
+  totalPrice  Decimal   @db.Decimal(10, 2)
+
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+}
+
+model ProjectMilestone {
+  id          String               @id @default(uuid())
+  enquiryId   String
+  title       String               @db.VarChar(150)
+  stageType   PaymentMilestoneType
+  percentage  Decimal              @db.Decimal(5, 2) // e.g. 40.00
+  amount      Decimal              @db.Decimal(10, 2)
+  deliverable String               @db.Text
+  dueDate     DateTime?
+  isCompleted Boolean              @default(false)
+  completedAt DateTime?
+
+  enquiry     Enquiry              @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+}
+
+model PaymentRecord {
+  id              String               @id @default(uuid())
+  enquiryId       String
+  milestoneType   PaymentMilestoneType
+  amountReceived  Decimal              @db.Decimal(10, 2)
+  paymentMode     String               @db.VarChar(50) // e.g., "UPI", "NEFT/IMPS"
+  transactionRef  String               @unique @db.VarChar(100)
+  verifiedByAdmin String               @db.VarChar(100)
+  paymentStatus   PaymentStatus        @default(VERIFIED_RECEIVED)
+  receivedAt      DateTime             @default(now())
+
+  enquiry         Enquiry              @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  @@index([enquiryId])
+}
+
+model PortfolioItem {
+  id            String          @id @default(uuid())
+  slug          String          @unique @db.VarChar(100)
+  title         String          @db.VarChar(200)
+  domain        ProjectDomain
+  category      ServiceCategory
+  summary       String          @db.VarChar(300)
+  problemStmt   String          @db.Text
+  engineeringApproach String      @db.Text
+  techStack     String[]
+  keyFeatures   String[]
+  heroImageUri  String          @db.VarChar(500)
+  demoUrl       String?         @db.VarChar(500)
+  isGenuineCase Boolean         @default(false) // false = Concept Demonstration
+  isPublished   Boolean         @default(true)
+  orderIndex    Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([domain])
+  @@index([isPublished])
+}
+
