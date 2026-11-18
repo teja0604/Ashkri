@@ -7,9 +7,9 @@ import { Button } from '@/components/ui/Button';
 import { Layers, ShieldCheck, CheckCircle2, ArrowRight } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Our Work & Architectural Demonstrations | ASHKRI Academic Solutions',
+  title: 'Our Work: Conceptual Architectural Demonstrations | ASHKRI Academic Solutions',
   description:
-    'Explore verified technical case studies and architectural prototypes engineered by ASHKRI Academic Solutions across software, AI, and embedded domains.',
+    'Explore ASHKRI-authored conceptual engineering architectures, reference design specifications, and academic project mentorship frameworks across software, AI, and embedded systems.',
 };
 
 const DEMONSTRATION_PROJECTS = [
@@ -29,8 +29,8 @@ const DEMONSTRATION_PROJECTS = [
       'MQTT telemetry queue architecture with offline flash memory buffer design',
       'Web management dashboard with geospatial plot mapping interface',
     ],
-    ashkriMentorshipRole:
-      'Architectural formulation, quantization pipeline scripting, FreeRTOS task scheduling, schematic verification, and LaTeX IEEE paper structure.',
+    proposedGuidanceFramework:
+      'Theoretical system modeling, neural quantization strategy, FreeRTOS task partition design, hardware schematic verification guidance, and IEEE paper structure mentorship.',
     status: 'Architectural Prototype',
   },
   {
@@ -49,8 +49,8 @@ const DEMONSTRATION_PROJECTS = [
       'Role-based authorization separating Patients, Doctors, and Hospital Registrars',
       'Clean containerized setup runnable with a single Docker Compose command',
     ],
-    ashkriMentorshipRole:
-      'System design, database normalization, concurrency test script generation, API validation, and oral examination viva coaching.',
+    proposedGuidanceFramework:
+      'System architecture review, relational database normalization, concurrency simulation strategy, REST/GraphQL API contracts, and oral viva defense preparation.',
     status: 'Proposed Technical Architecture',
   },
   {
@@ -69,8 +69,8 @@ const DEMONSTRATION_PROJECTS = [
       'Prioritized CAN 2.0B identifier frames for immediate emergency shutdown signals',
       'Desktop Python/PyQt diagnostic interface visualizing live frequency spectrums',
     ],
-    ashkriMentorshipRole:
-      'DSP algorithm porting, DMA buffer configuration, CAN transceiver circuit design, and formal academic thesis documentation.',
+    proposedGuidanceFramework:
+      'Digital signal processing algorithm mapping, DMA buffer configuration modeling, CAN bus frame format design, and thesis defense walkthrough.',
     status: 'Conceptual Engineering Demonstration',
   },
   {
@@ -89,8 +89,8 @@ const DEMONSTRATION_PROJECTS = [
       'Strict source-citation constraint preventing off-corpus hallucination',
       'Clean web interface highlighting exact document excerpts',
     ],
-    ashkriMentorshipRole:
-      'Embedding model selection, vector indexing optimization, citation validation logic, and presentation deck design.',
+    proposedGuidanceFramework:
+      'Embedding model trade-off analysis, vector indexing design, hallucination mitigation logic, and presentation deck architecture.',
     status: 'Proposed Technical Architecture',
   },
 ];
@@ -103,7 +103,7 @@ export default function OurWorkPage() {
         <Container>
           <div className="max-w-3xl">
             <Badge variant="accent" size="md" className="mb-4">
-              Demonstration Case Studies
+              ASHKRI Reference Design Specifications
             </Badge>
             <h1 className="text-3xl sm:text-5xl font-heading font-bold text-ink-primary tracking-tight leading-tight mb-6">
               Engineering Ideas Into{' '}
@@ -112,7 +112,7 @@ export default function OurWorkPage() {
               </span>
             </h1>
             <p className="text-base sm:text-lg text-ink-secondary leading-relaxed font-body">
-              The projects below represent proposed technical architectures and conceptual engineering demonstrations developed to illustrate modular design, industry-standard toolchains, and comprehensive academic deliverables. We clearly distinguish conceptual designs from verified client implementations.
+              The blueprints below are representative conceptual architectures authored by the ASHKRI Technologies engineering team. They serve as curriculum reference specifications to demonstrate system modeling, modular decomposition, and academic deliverable standards. In strict accordance with our publication ethics charter, these designs are pedagogical reference models and do not represent private client deliverables.
             </p>
           </div>
         </Container>
@@ -138,6 +138,7 @@ export default function OurWorkPage() {
                         {project.domain}
                       </span>
                     </div>
+
                     <h2 className="text-2xl font-heading font-bold text-ink-primary">
                       {project.title}
                     </h2>
@@ -186,10 +187,10 @@ export default function OurWorkPage() {
 
                     <div className="p-4 rounded bg-surface-elevated border border-seam-subtle">
                       <h4 className="text-xs uppercase tracking-wider font-heading font-bold text-ink-primary mb-1">
-                        ASHKRI Mentorship Scope
+                        ASHKRI Proposed Mentorship Framework
                       </h4>
                       <p className="text-xs text-ink-secondary font-body leading-relaxed">
-                        {project.ashkriMentorshipRole}
+                        {project.proposedGuidanceFramework}
                       </p>
                     </div>
                   </div>
@@ -230,4 +231,3 @@ export default function OurWorkPage() {
     </div>
   );
 }
-

@@ -1,15 +1,8 @@
 import { MetadataRoute } from 'next';
-
-const getBaseUrl = (): string => {
-  const envUrl = process.env.NEXT_PUBLIC_SITE_URL;
-  if (envUrl && envUrl.trim().length > 0) {
-    return envUrl.trim().replace(/\/+$/, '');
-  }
-  return 'https://ashkri.com';
-};
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = getBaseUrl();
+  const baseUrl = getCanonicalSiteUrl();
   const lastModified = new Date();
 
   const routes = [

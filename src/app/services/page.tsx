@@ -214,7 +214,7 @@ export default function ServicesPage() {
 
                       <div>
                         <span className="text-xs uppercase tracking-wider font-heading font-semibold text-ink-primary block mb-3">
-                          Verified Deliverables:
+                          Standard Service Deliverables:
                         </span>
                         <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-ink-secondary font-body">
                           {service.inclusions.map((inc) => (
