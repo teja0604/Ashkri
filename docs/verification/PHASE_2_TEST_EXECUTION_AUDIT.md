@@ -77,3 +77,22 @@ Automated Test Verification Matrix:
 └── Multi-Viewport E2E Suite (Playwright v1.65.1) ── 114 / 114 passed (100%)
 ```
 
+---
+
+## 4. Security & Hardening Controls
+
+- **HTTP Security Headers (`next.config.mjs`):**
+  - `Strict-Transport-Security`: `max-age=63072000; includeSubDomains; preload`
+  - `X-Content-Type-Options`: `nosniff`
+  - `X-Frame-Options`: `DENY`
+  - `Referrer-Policy`: `origin-when-cross-origin`
+  - `Permissions-Policy`: `camera=(), microphone=(), geolocation=(), browsing-topics=()`
+  - `X-DNS-Prefetch-Control`: `on`
+- **Link Security:** Universal `rel="noopener noreferrer"` enforcement for all external links and buttons.
+- **Dependency Audit:** Zero production runtime vulnerabilities (`npm audit --omit=dev`: 0 vulnerabilities).
+- **Environment & Secret Isolation:** No secrets or credentials in client bundles; canonical domain strictly validated.
+- **Form Boundaries:** Pure client-side validation and local handoff; no unverified backend persistence claims.
+├── Axe-core WCAG 2.2 AA Accessibility Audits     ── 0 violations detected
+└── Multi-Viewport E2E Suite (Playwright v1.65.1) ── 114 / 114 passed (100%)
+```
+

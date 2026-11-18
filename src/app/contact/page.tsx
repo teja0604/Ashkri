@@ -54,13 +54,18 @@ export default function ContactPage() {
                   <div className="flex items-start gap-3">
                     <Mail className="w-4 h-4 text-accent-action flex-shrink-0 mt-0.5" />
                     <div>
-                      <span className="font-heading font-semibold text-ink-primary block">Official Email</span>
+                      <span className="font-heading font-semibold text-ink-primary block">
+                        Designated Corporate Email
+                      </span>
                       <a
                         href="mailto:contact@ashkri.com"
                         className="text-ink-secondary hover:text-accent-action transition-colors"
                       >
                         contact@ashkri.com
                       </a>
+                      <span className="block text-[11px] text-ink-secondary/70 mt-0.5">
+                        (Designated contact mailbox; direct enquiries are also welcomed via Telegram)
+                      </span>
                     </div>
                   </div>
 

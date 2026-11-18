@@ -31,6 +31,16 @@ export default function PrivacyPolicyPage() {
       <Section spacing="default" className="border-b border-seam-subtle">
         <Container>
           <div className="max-w-3xl mx-auto space-y-8 text-sm text-ink-secondary font-body leading-relaxed">
+            {/* Draft Policy Notice Banner */}
+            <div className="p-4 rounded-editorial bg-surface-elevated border border-accent-brass/40 text-ink-primary text-xs sm:text-sm font-body leading-relaxed">
+              <span className="font-heading font-bold text-accent-brass uppercase tracking-wider text-xs block mb-1">
+                Notice: Policy Status & Phase 2 Architecture
+              </span>
+              <p className="text-ink-secondary">
+                This document outlines proposed privacy standards and data management policies for ASHKRI Academic Solutions. In Phase 2, this website operates statically with client-side form compilation only; no automated database persistence is active. This draft policy is subject to formal legal review and business ratification prior to automated data processing in Phase 3.
+              </p>
+            </div>
+
             <div className="space-y-3">
               <h2 className="text-lg font-heading font-bold text-ink-primary">
                 1. Information We Collect
@@ -83,7 +93,7 @@ export default function PrivacyPolicyPage() {
                 5. Data Retention & Deletion Requests
               </h2>
               <p>
-                Enquiry records and communications are retained for the duration of your academic engagement cycle to support ongoing project revisions and viva preparation. You may request the permanent deletion of your contact records and submitted project briefs at any time by contacting us at <a href="mailto:contact@ashkri.com" className="text-accent-action underline">contact@ashkri.com</a>.
+                In subsequent phases, enquiry records and communications will be retained for the duration of your academic engagement cycle to support ongoing project revisions and viva preparation. You may request the permanent deletion of your contact records at any time by contacting our designated address at <a href="mailto:contact@ashkri.com" className="text-accent-action underline">contact@ashkri.com</a> or via our official Telegram channel.
               </p>
             </div>
 
@@ -92,7 +102,7 @@ export default function PrivacyPolicyPage() {
                 6. Contact for Privacy Inquiries
               </h2>
               <p>
-                If you have questions regarding this Privacy Policy or our data management practices, please contact our academic coordination office at <a href="mailto:contact@ashkri.com" className="text-accent-action underline">contact@ashkri.com</a>.
+                If you have questions regarding this draft Privacy Policy or our proposed data management practices, please contact our coordination team at <a href="mailto:contact@ashkri.com" className="text-accent-action underline">contact@ashkri.com</a> or via Telegram at <a href="https://t.me/Ashkri_Technologies" target="_blank" rel="noopener noreferrer" className="text-accent-action underline">@Ashkri_Technologies</a>.
               </p>
             </div>
           </div>

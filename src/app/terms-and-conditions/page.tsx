@@ -31,6 +31,16 @@ export default function TermsAndConditionsPage() {
       <Section spacing="default" className="border-b border-seam-subtle">
         <Container>
           <div className="max-w-3xl mx-auto space-y-8 text-sm text-ink-secondary font-body leading-relaxed">
+            {/* Ratification Notice Banner */}
+            <div className="p-4 rounded-editorial bg-surface-elevated border border-accent-brass/40 text-ink-primary text-xs sm:text-sm font-body leading-relaxed">
+              <span className="font-heading font-bold text-accent-brass uppercase tracking-wider text-xs block mb-1">
+                Notice of Proposed Commercial Terms
+              </span>
+              <p className="text-ink-secondary">
+                The milestone schedule and commercial engagement terms outlined below represent proposed terms subject to formal legal review and business ratification prior to automated billing activation in subsequent phases.
+              </p>
+            </div>
+
             <div className="space-y-3">
               <h2 className="text-lg font-heading font-bold text-ink-primary">
                 1. Nature of Services

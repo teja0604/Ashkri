@@ -91,7 +91,7 @@ export default function RefundPolicyPage() {
                 6. Refund Processing Timeline
               </h2>
               <p>
-                Approved refunds are processed via the original payment method (UPI / Bank Transfer) within 5–7 business days. To request a cancellation or refund, contact our administrative coordinator in writing at <a href="mailto:contact@ashkri.com" className="text-accent-action underline">contact@ashkri.com</a>.
+                Approved refunds are processed via the original payment method (UPI / Bank Transfer) within 5–7 business days. To request a cancellation or refund, contact our administrative coordinator in writing at <a href="mailto:contact@ashkri.com" className="text-accent-action underline">contact@ashkri.com</a> (or via our official Telegram coordination channel).
               </p>
             </div>
           </div>

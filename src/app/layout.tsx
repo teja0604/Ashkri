@@ -4,9 +4,11 @@ import { ThemeScript } from '@/components/theme/ThemeScript';
 import { ThemeProvider } from '@/components/theme/ThemeProvider';
 import { Navbar } from '@/components/navigation/Navbar';
 import { FooterSection } from '@/components/sections/10-Footer';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 import './globals.css';
 
 export const metadata: Metadata = {
+  metadataBase: new URL(getCanonicalSiteUrl()),
   title: 'ASHKRI Academic Solutions | Engineering Project Mentorship & Technology Guidance',
   description:
     'ASHKRI Academic Solutions provides engineering students across India with project consultation, technical mentoring, and structured development guidance across modern engineering domains.',

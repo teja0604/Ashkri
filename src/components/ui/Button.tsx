@@ -52,7 +52,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         <a
           href={href}
           target={target}
-          rel={rel}
+          rel={target === '_blank' && !rel ? 'noopener noreferrer' : rel}
           className={`${baseStyles} ${sizeStyles} ${variantStyles} ${className}`}
         >
           {children}

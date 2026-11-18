@@ -173,7 +173,7 @@ export function ContactForm() {
 
         <div className="pt-2 border-t border-seam-subtle">
           <p className="text-xs text-ink-secondary/80 font-body">
-            Please verify outgoing messages are addressed to our primary business email: <span className="text-ink-primary font-mono font-medium">contact@ashkri.com</span>. Our technical mentors review requests within 24 hours.
+            Please note: <span className="text-ink-primary font-mono font-medium">contact@ashkri.com</span> is our designated corporate mailbox. For immediate direct communication during pre-launch, connect directly via Telegram or copy your summary above.
           </p>
         </div>
 
