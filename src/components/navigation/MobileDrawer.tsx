@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { X } from 'lucide-react';
 import { ThemeSwitcher } from '../theme/ThemeSwitcher';
 import { Button } from '../ui/Button';
-import { MAIN_NAV_ITEMS } from '@/types/navigation';
+import { ALL_NAV_ITEMS } from '@/types/navigation';
 
 export interface MobileDrawerProps {
   isOpen: boolean;
@@ -22,10 +22,8 @@ export function MobileDrawer({ isOpen, onClose, triggerRef }: MobileDrawerProps)
   useEffect(() => {
     if (!isOpen) return;
 
-    // Save previous active element to restore later if triggerRef is not provided
     const previouslyFocused = document.activeElement as HTMLElement | null;
 
-    // Focus close button on open
     setTimeout(() => {
       closeButtonRef.current?.focus();
     }, 50);
@@ -63,14 +61,12 @@ export function MobileDrawer({ isOpen, onClose, triggerRef }: MobileDrawerProps)
 
     window.addEventListener('keydown', handleKeyDown);
 
-    // Prevent body scrolling while drawer is open
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = originalOverflow;
-      // Restore focus to trigger
       if (triggerRef?.current) {
         triggerRef.current.focus();
       } else if (previouslyFocused) {
@@ -87,6 +83,7 @@ export function MobileDrawer({ isOpen, onClose, triggerRef }: MobileDrawerProps)
       role="dialog"
       aria-modal="true"
       aria-label="Mobile Navigation Drawer"
+      id="mobile-navigation-drawer"
     >
       {/* Backdrop */}
       <div
@@ -135,12 +132,12 @@ export function MobileDrawer({ isOpen, onClose, triggerRef }: MobileDrawerProps)
 
           {/* Navigation Links */}
           <nav className="flex flex-col py-6 space-y-1" aria-label="Mobile main navigation">
-            {MAIN_NAV_ITEMS.map((item) => (
+            {ALL_NAV_ITEMS.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={onClose}
-                className="flex items-center text-lg font-heading font-medium text-ink-primary hover:text-accent-action py-3 px-3 rounded-editorial transition-colors min-h-[44px] hover:bg-surface-elevated"
+                className="flex items-center text-base font-heading font-medium text-ink-primary hover:text-accent-action py-2.5 px-3 rounded-editorial transition-colors min-h-[44px] hover:bg-surface-elevated"
               >
                 {item.label}
               </Link>
@@ -158,14 +155,9 @@ export function MobileDrawer({ isOpen, onClose, triggerRef }: MobileDrawerProps)
           <Button
             variant="primary"
             size="lg"
+            href="/contact"
             className="w-full"
-            onClick={() => {
-              onClose();
-              const contactSection = document.getElementById('contact');
-              if (contactSection) {
-                contactSection.scrollIntoView({ behavior: 'smooth' });
-              }
-            }}
+            onClick={onClose}
           >
             Get Project Assistance
           </Button>
@@ -178,4 +170,3 @@ export function MobileDrawer({ isOpen, onClose, triggerRef }: MobileDrawerProps)
     </div>
   );
 }
-

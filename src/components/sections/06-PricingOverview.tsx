@@ -7,7 +7,7 @@ import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Check, ShieldCheck } from 'lucide-react';
 
-const PRICING_TIERS = [
+const PRICING_PREVIEWS = [
   {
     category: 'Consultation & Planning',
     price: '₹199 – ₹599',
@@ -42,12 +42,18 @@ export function PricingOverviewSection() {
   return (
     <Section id="pricing" spacing="default" className="border-b border-seam-subtle">
       <Container>
-        <SectionHeading
-          eyebrow="Transparent Investment"
-          title="Clear Services."
-          serifAccent="Transparent Pricing."
-          description="No hidden fees or unexpected costs. All project engagements follow clear indicative ranges, with milestone-based billing tied directly to verifiable progress."
-        />
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 md:mb-14 gap-6">
+          <SectionHeading
+            eyebrow="Transparent Investment"
+            title="Clear Services."
+            serifAccent="Transparent Pricing."
+            description="No hidden fees or unexpected costs. All project engagements follow clear indicative ranges, with milestone-based billing tied directly to verifiable progress."
+            className="mb-0"
+          />
+          <Button variant="secondary" size="md" href="/pricing" className="flex-shrink-0 self-start md:self-end">
+            View All 9 Pricing Tiers →
+          </Button>
+        </div>
 
         {/* Milestone Payment Callout */}
         <div className="mb-12 p-6 rounded-editorial bg-accent-terracotta/5 border border-accent-terracotta/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -63,13 +69,13 @@ export function PricingOverviewSection() {
             </div>
           </div>
           <Badge variant="accent" size="md" className="flex-shrink-0">
-            Zero Unverified Payments
+            Milestone Protected
           </Badge>
         </div>
 
         {/* Pricing Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {PRICING_TIERS.map((tier) => (
+          {PRICING_PREVIEWS.map((tier) => (
             <Card
               key={tier.category}
               variant="default"
@@ -110,7 +116,7 @@ export function PricingOverviewSection() {
               <Button
                 variant="secondary"
                 size="sm"
-                href="#contact"
+                href="/contact"
                 className="w-full text-xs"
               >
                 Request Exact Scope Quote

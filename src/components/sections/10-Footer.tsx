@@ -45,70 +45,65 @@ export function FooterSection() {
             </p>
           </div>
 
-          {/* Column 2: Navigation (2 cols) */}
+          {/* Column 2: Platform Navigation (2 cols) */}
           <div className="lg:col-span-2 flex flex-col">
             <h4 className="font-heading font-bold text-xs uppercase tracking-widest text-ink-primary mb-4">
               Platform
             </h4>
             <ul className="space-y-2.5 text-sm font-body">
               <li>
-                <a href="#services" className="text-ink-secondary hover:text-accent-action transition-colors">
+                <Link href="/services" className="text-ink-secondary hover:text-accent-action transition-colors">
                   Services
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#domains" className="text-ink-secondary hover:text-accent-action transition-colors">
+                <Link href="/project-domains" className="text-ink-secondary hover:text-accent-action transition-colors">
                   Project Domains
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#how-it-works" className="text-ink-secondary hover:text-accent-action transition-colors">
+                <Link href="/how-it-works" className="text-ink-secondary hover:text-accent-action transition-colors">
                   How It Works
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#work" className="text-ink-secondary hover:text-accent-action transition-colors">
-                  Featured Work
-                </a>
+                <Link href="/our-work" className="text-ink-secondary hover:text-accent-action transition-colors">
+                  Our Work
+                </Link>
               </li>
               <li>
-                <a href="#pricing" className="text-ink-secondary hover:text-accent-action transition-colors">
+                <Link href="/pricing" className="text-ink-secondary hover:text-accent-action transition-colors">
                   Transparent Pricing
-                </a>
+                </Link>
               </li>
             </ul>
           </div>
 
-          {/* Column 3: Domains (2 cols) */}
+          {/* Column 3: Trust & Support (2 cols) */}
           <div className="lg:col-span-2 flex flex-col">
             <h4 className="font-heading font-bold text-xs uppercase tracking-widest text-ink-primary mb-4">
-              Domains
+              Information
             </h4>
             <ul className="space-y-2.5 text-sm font-body">
               <li>
-                <a href="#domains" className="text-ink-secondary hover:text-accent-action transition-colors">
-                  CSE & IT
-                </a>
+                <Link href="/about" className="text-ink-secondary hover:text-accent-action transition-colors">
+                  About Us
+                </Link>
               </li>
               <li>
-                <a href="#domains" className="text-ink-secondary hover:text-accent-action transition-colors">
-                  AI & Data Science
-                </a>
+                <Link href="/contact" className="text-ink-secondary hover:text-accent-action transition-colors">
+                  Contact / Quote
+                </Link>
               </li>
               <li>
-                <a href="#domains" className="text-ink-secondary hover:text-accent-action transition-colors">
-                  IoT & Robotics
-                </a>
+                <Link href="/faq" className="text-ink-secondary hover:text-accent-action transition-colors">
+                  FAQ Knowledge Base
+                </Link>
               </li>
               <li>
-                <a href="#domains" className="text-ink-secondary hover:text-accent-action transition-colors">
-                  Embedded Systems
-                </a>
-              </li>
-              <li>
-                <a href="#domains" className="text-ink-secondary hover:text-accent-action transition-colors">
-                  ECE & EEE
-                </a>
+                <Link href="/terms-and-conditions" className="text-ink-secondary hover:text-accent-action transition-colors">
+                  Academic Ethics
+                </Link>
               </li>
             </ul>
           </div>
@@ -155,19 +150,18 @@ export function FooterSection() {
           </p>
 
           <div className="flex items-center gap-6">
-            <span className="hover:text-ink-primary cursor-pointer transition-colors">
+            <Link href="/privacy-policy" className="hover:text-ink-primary transition-colors">
               Privacy Policy
-            </span>
-            <span className="hover:text-ink-primary cursor-pointer transition-colors">
+            </Link>
+            <Link href="/terms-and-conditions" className="hover:text-ink-primary transition-colors">
               Terms & Conditions
-            </span>
-            <span className="hover:text-ink-primary cursor-pointer transition-colors">
+            </Link>
+            <Link href="/refund-policy" className="hover:text-ink-primary transition-colors">
               Refund Policy
-            </span>
+            </Link>
           </div>
         </div>
       </Container>
     </footer>
   );
 }
-

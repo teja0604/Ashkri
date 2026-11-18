@@ -9,14 +9,6 @@ import { Badge } from '../ui/Badge';
 import { ArrowRight, CheckCircle2, ShieldCheck, Compass } from 'lucide-react';
 
 export function HeroSection() {
-  const scrollToServices = () => {
-    document.getElementById('services')?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const scrollToContact = () => {
-    document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' });
-  };
-
   return (
     <Section spacing="default" className="pt-8 sm:pt-12 md:pt-16 pb-16 md:pb-24 border-b border-seam-subtle">
       <Container>
@@ -50,7 +42,7 @@ export function HeroSection() {
               <Button
                 variant="primary"
                 size="lg"
-                onClick={scrollToContact}
+                href="/contact"
                 className="w-full sm:w-auto"
               >
                 Discuss Your Project
@@ -59,7 +51,7 @@ export function HeroSection() {
               <Button
                 variant="secondary"
                 size="lg"
-                onClick={scrollToServices}
+                href="/services"
                 className="w-full sm:w-auto"
               >
                 Explore Services
@@ -132,4 +124,3 @@ export function HeroSection() {
     </Section>
   );
 }
-

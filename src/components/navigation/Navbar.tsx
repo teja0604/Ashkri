@@ -15,13 +15,6 @@ export function Navbar() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
-  const scrollToContact = () => {
-    const el = document.getElementById('contact');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
   return (
     <>
       <header className="sticky top-0 z-40 w-full bg-bg-primary/90 backdrop-blur-md border-b border-seam-subtle transition-colors duration-200">
@@ -53,7 +46,7 @@ export function Navbar() {
               </div>
             </Link>
 
-            {/* Desktop Navigation Links */}
+            {/* Desktop Navigation Links (Real routes) */}
             <nav
               className="hidden lg:flex items-center gap-6 xl:gap-8"
               aria-label="Desktop primary navigation"
@@ -63,13 +56,13 @@ export function Navbar() {
               ))}
             </nav>
 
-            {/* Desktop Right Actions (Theme Switcher + CTA) */}
+            {/* Desktop Right Actions (Theme Switcher + CTA to /contact) */}
             <div className="hidden lg:flex items-center gap-4">
               <ThemeSwitcher />
               <Button
                 variant="primary"
                 size="md"
-                onClick={scrollToContact}
+                href="/contact"
                 className="shadow-sm"
               >
                 Get Assistance
@@ -103,4 +96,3 @@ export function Navbar() {
     </>
   );
 }
-
