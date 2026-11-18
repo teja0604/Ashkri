@@ -8,7 +8,7 @@ export function FinalCTASection() {
   return (
     <Section id="cta" spacing="default" className="border-b border-seam-subtle bg-surface-elevated/40">
       <Container>
-        <div className="relative rounded-2xl bg-gradient-to-br from-[#121A22] to-[#1E2833] text-white p-8 sm:p-12 md:p-16 border border-[#394651] shadow-editorial-elevated overflow-hidden">
+        <div className="relative rounded-2xl bg-gradient-to-br from-[#121A22] to-[#1E2833] text-white p-6 sm:p-10 md:p-16 border border-[#394651] shadow-editorial-elevated overflow-hidden">
           {/* Subtle architectural background accents */}
           <div
             className="absolute top-0 right-0 w-96 h-96 bg-accent-terracotta/15 rounded-full blur-3xl pointer-events-none"
@@ -49,18 +49,18 @@ export function FinalCTASection() {
                 href="https://t.me/Ashkri_Technologies"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center font-heading font-medium tracking-normal transition-all duration-200 rounded-editorial focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-action focus-visible:ring-offset-2 text-base md:text-lg px-6 py-3.5 min-h-[50px] gap-2.5 w-full sm:w-auto border border-white/20 text-white hover:bg-white/10 active:scale-[0.99]"
+                className="inline-flex items-center justify-center font-heading font-medium tracking-normal transition-all duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] rounded-editorial focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-action focus-visible:ring-offset-2 text-base md:text-lg px-6 py-3.5 min-h-[50px] gap-2.5 w-full sm:w-auto border border-white/25 text-white hover:bg-white/10 hover:border-white/45 hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] select-none cursor-pointer"
               >
                 <MessageCircle className="w-4 h-4 mr-1 text-accent-brass" />
                 Join Telegram Community
               </a>
             </div>
 
-            <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap items-center gap-6 text-xs text-[#B9C1C8] font-heading">
+            <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap items-center gap-3 sm:gap-6 text-xs text-[#B9C1C8] font-heading">
               <span>Direct Response Window: <strong className="text-white">Within 24 Hours</strong></span>
-              <span>·</span>
+              <span className="hidden sm:inline">·</span>
               <span>Confidentiality Guaranteed</span>
-              <span>·</span>
+              <span className="hidden sm:inline">·</span>
               <span>Official Parent Brand: <strong className="text-white">ASHKRI Technologies</strong></span>
             </div>
           </div>

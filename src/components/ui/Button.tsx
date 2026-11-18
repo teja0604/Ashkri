@@ -28,7 +28,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ref
   ) => {
     const baseStyles =
-      'inline-flex items-center justify-center font-heading font-medium tracking-normal transition-all duration-200 rounded-editorial focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-action focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none select-none';
+      'inline-flex items-center justify-center font-heading font-medium tracking-normal transition-all duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] rounded-editorial focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-action focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none select-none cursor-pointer';
 
     const sizeStyles = {
       sm: 'text-xs md:text-sm px-3.5 py-2 min-h-[38px] gap-1.5',
@@ -38,13 +38,13 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variantStyles = {
       primary:
-        'bg-accent-action text-white dark:text-[#121A22] hover:bg-accent-action/90 shadow-sm hover:shadow active:scale-[0.99]',
+        'bg-accent-action text-white dark:text-[#121A22] hover:bg-accent-action/90 shadow-sm hover:shadow-[0_4px_16px_-2px_rgba(180,91,64,0.35)] dark:hover:shadow-[0_4px_16px_-2px_rgba(199,122,94,0.3)] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99]',
       secondary:
-        'bg-surface-primary/70 border border-seam-strong text-ink-primary hover:bg-surface-elevated hover:border-ink-secondary/40 active:scale-[0.99]',
+        'bg-surface-primary/80 border border-seam-strong text-ink-primary hover:bg-surface-elevated hover:border-accent-terracotta/40 hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99]',
       ghost:
-        'bg-transparent text-ink-primary hover:bg-surface-elevated active:bg-surface-primary',
+        'bg-transparent text-ink-primary hover:bg-surface-elevated hover:text-accent-action active:bg-surface-primary',
       brass:
-        'bg-accent-brass text-[#121A22] hover:bg-accent-brass/90 shadow-sm hover:shadow active:scale-[0.99] font-semibold',
+        'bg-accent-brass text-[#121A22] hover:bg-accent-brass/90 shadow-sm hover:shadow-[0_4px_16px_-2px_rgba(193,161,107,0.35)] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] font-semibold',
     }[variant];
 
     if (href) {

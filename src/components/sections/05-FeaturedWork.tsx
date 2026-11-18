@@ -6,47 +6,35 @@ import { SectionHeading } from '../ui/SectionHeading';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
-import { CheckCircle } from 'lucide-react';
+import { ArrowRight, Layers } from 'lucide-react';
 
 const FEATURED_PROJECTS = [
   {
+    id: 'plant-pathology-node',
     title: 'Plant Pathology Telemetry & Edge Inference Node',
-    badge: 'Demonstration Architecture',
+    badge: 'Conceptual Prototype',
     domain: 'AI & IoT',
     tech: ['PyTorch', 'ESP32', 'FastAPI', 'Next.js', 'MQTT'],
-    problem: 'Early crop blight identification without reliable internet connectivity in remote farm plots.',
-    solution: 'Quantized lightweight neural network architecture deployed to a low-power microcontroller with fallback telemetry logging.',
-    deliverables: [
-      'Edge model quantization and deployment script',
-      'ESP32 firmware and MQTT sensor circuit',
-      'Full IEEE-compliant conference paper draft',
-    ],
+    summary:
+      'Low-power microcontroller hardware running quantized neural inference for early crop blight detection, with offline flash telemetry and automated cloud dashboard synchronization.',
   },
   {
+    id: 'medical-appointment-vault',
     title: 'Concurrent Appointment Vault & Queue Engine',
-    badge: 'Demonstration Architecture',
+    badge: 'Proposed Architecture',
     domain: 'Full-Stack Software',
     tech: ['Next.js', 'PostgreSQL', 'Prisma', 'Redis', 'Docker'],
-    problem: 'Hospital OPD bottlenecks during morning token generation with concurrent database lockouts.',
-    solution: 'Optimistic locking queue architecture backed by in-memory data store with atomic state transitions.',
-    deliverables: [
-      'Clean modular repository with Docker compose',
-      'Database schema with relational constraints',
-      'Viva defense architecture slide deck',
-    ],
+    summary:
+      'High-throughput outpatient queue system utilizing Redis distributed token locks and PostgreSQL row-level optimistic concurrency to eliminate morning clinic database contention.',
   },
   {
+    id: 'spectral-vibration-node',
     title: 'Industrial Motor Telemetry & Spectral Anomaly Node',
-    badge: 'Demonstration Architecture',
+    badge: 'Conceptual Prototype',
     domain: 'Embedded & DSP',
     tech: ['STM32 ARM', 'FreeRTOS', 'FFT Spectral Analysis', 'CAN Bus'],
-    problem: 'Preventing catastrophic bearing failures in factory induction motors through vibration anomaly sensing.',
-    solution: 'On-chip harmonic vibration spectrum analysis with prioritized CAN bus diagnostic frames.',
-    deliverables: [
-      'FreeRTOS task scheduler and ADC pipeline',
-      'Hardware schematics and wiring diagram',
-      'Oral examination code review guide',
-    ],
+    summary:
+      'On-chip hardware-accelerated Fast Fourier Transform (FFT) vibration harmonic sensing with FreeRTOS task scheduling and prioritized industrial CAN bus emergency alert frames.',
   },
 ];
 
@@ -54,12 +42,12 @@ export function FeaturedWorkSection() {
   return (
     <Section id="work" spacing="default" className="border-b border-seam-subtle bg-surface-elevated/30">
       <Container>
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 md:mb-14 gap-6">
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 md:mb-12 gap-6">
           <SectionHeading
             eyebrow="Demonstration Portfolio"
-            title="Engineering Ideas Into"
-            serifAccent="Practical Solutions."
-            description="Representative architectural prototypes developed to illustrate real-world system design, clean code practices, and comprehensive academic deliverables."
+            title="Curriculum Reference"
+            serifAccent="Architectures."
+            description="Representative conceptual engineering prototypes illustrating production design patterns, clean code standards, and viva-ready documentation."
             className="mb-0"
           />
           <Button variant="secondary" size="md" href="/our-work" className="flex-shrink-0 self-start md:self-end">
@@ -67,16 +55,16 @@ export function FeaturedWorkSection() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {FEATURED_PROJECTS.map((project) => (
             <Card
-              key={project.title}
+              key={project.id}
               variant="default"
               hoverable
-              className="flex flex-col justify-between"
+              className="flex flex-col justify-between group"
             >
               <div>
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between mb-3.5">
                   <Badge variant="brass" size="sm">
                     {project.badge}
                   </Badge>
@@ -85,21 +73,15 @@ export function FeaturedWorkSection() {
                   </span>
                 </div>
 
-                <h3 className="text-lg font-heading font-bold text-ink-primary mb-3 leading-snug">
+                <h3 className="text-base sm:text-lg font-heading font-bold text-ink-primary mb-2.5 leading-snug group-hover:text-accent-action transition-colors">
                   {project.title}
                 </h3>
 
-                <p className="text-xs text-ink-secondary mb-4 font-body leading-relaxed">
-                  <strong className="text-ink-primary block font-heading mb-1">Problem Formulation:</strong>
-                  {project.problem}
+                <p className="text-xs sm:text-sm text-ink-secondary leading-relaxed font-body mb-4">
+                  {project.summary}
                 </p>
 
-                <p className="text-xs text-ink-secondary mb-5 font-body leading-relaxed">
-                  <strong className="text-ink-primary block font-heading mb-1">Engineered Approach:</strong>
-                  {project.solution}
-                </p>
-
-                <div className="flex flex-wrap gap-1 mb-5">
+                <div className="flex flex-wrap gap-1.5 mb-5">
                   {project.tech.map((t) => (
                     <span
                       key={t}
@@ -111,30 +93,24 @@ export function FeaturedWorkSection() {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-seam-subtle">
-                <span className="text-[11px] uppercase tracking-wider font-heading font-semibold text-ink-secondary/70 block mb-2">
-                  Academic Deliverables:
-                </span>
-                <ul className="text-xs text-ink-secondary space-y-1.5 mb-6">
-                  {project.deliverables.map((item) => (
-                    <li key={item} className="flex items-center gap-1.5">
-                      <CheckCircle className="w-3.5 h-3.5 text-status-success flex-shrink-0" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  href="/contact"
-                  className="w-full text-xs"
+              <div className="pt-3 border-t border-seam-subtle">
+                <Link
+                  href={`/our-work#${project.id}`}
+                  className="inline-flex items-center text-xs font-heading font-semibold text-accent-action hover:text-accent-terracotta transition-colors gap-1"
                 >
-                  Discuss a Similar Architecture
-                </Button>
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Inspect Architecture Blueprint</span>
+                  <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+                </Link>
               </div>
             </Card>
           ))}
+        </div>
+
+        <div className="mt-8 text-center">
+          <p className="text-xs text-ink-secondary font-body">
+            All models above are pedagogical reference specifications designed by ASHKRI Technologies to demonstrate engineering standards. In accordance with our ethics policy, private student deliverables are never published.
+          </p>
         </div>
       </Container>
     </Section>

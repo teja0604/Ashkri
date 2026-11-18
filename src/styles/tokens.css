@@ -34,6 +34,19 @@
   --status-warning: #946800;
   --status-error: #B3261E;
   --status-info: #1D5C8A;
+
+  /* Interaction & Motion Tokens */
+  --transition-micro: 180ms;
+  --transition-standard: 300ms;
+  --transition-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Card Interaction Tokens */
+  --card-tilt-max: 5deg;
+  --card-hover-lift: -3px;
+  --card-glow-opacity: 0.12;
+  --card-glow-color: rgba(180, 91, 64, 0.12);
+  --card-border-hover: rgba(180, 91, 64, 0.35);
+  --shadow-card-hover: 0 12px 32px -4px rgba(26, 32, 44, 0.08), 0 4px 12px -2px rgba(26, 32, 44, 0.04);
 }
 
 [data-theme="dark"] {
@@ -69,5 +82,18 @@
   --status-warning: #C2931D;
   --status-error: #E0524C;
   --status-info: #3A81B8;
+
+  /* Interaction & Motion Tokens */
+  --transition-micro: 180ms;
+  --transition-standard: 300ms;
+  --transition-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Card Interaction Tokens */
+  --card-tilt-max: 5deg;
+  --card-hover-lift: -3px;
+  --card-glow-opacity: 0.20;
+  --card-glow-color: rgba(199, 122, 94, 0.18);
+  --card-border-hover: rgba(199, 122, 94, 0.45);
+  --shadow-card-hover: 0 12px 32px -4px rgba(0, 0, 0, 0.4), 0 4px 12px -2px rgba(0, 0, 0, 0.25);
 }
 
