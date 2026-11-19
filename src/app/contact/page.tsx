@@ -8,7 +8,7 @@ import { MessageCircle, Mail, Clock, ShieldCheck, MapPin, Phone } from 'lucide-r
 export const metadata: Metadata = {
   title: 'Contact & Project Enquiry | ASHKRI Academic Solutions',
   description:
-    'Submit your final-year engineering project requirements for consultation, architecture review, and milestone quotations. Response within 24 hours.',
+    'Submit your final-year engineering project requirements for consultation, architecture review, and milestone quotations. Response within 24 business hours (Mon – Sat).',
 };
 
 export default function ContactPage() {
@@ -28,7 +28,7 @@ export default function ContactPage() {
               </span>
             </h1>
             <p className="text-base sm:text-lg text-ink-secondary leading-relaxed font-body">
-              Submit your project title, departmental guidelines, or technical challenges. Our technical coordinators and engineering leads evaluate every enquiry within 24 hours.
+              Submit your project title, departmental guidelines, or technical challenges. Our technical coordinators and engineering leads evaluate every enquiry within 24 business hours (Mon – Sat, 9:00 AM – 6:00 PM IST).
             </p>
           </div>
         </Container>
@@ -88,7 +88,7 @@ export default function ContactPage() {
                     <Clock className="w-4 h-4 text-status-success flex-shrink-0 mt-0.5" />
                     <div>
                       <span className="font-heading font-semibold text-ink-primary block">Response Window</span>
-                      <span className="text-ink-secondary">Within 24 Hours (Mon – Sat)</span>
+                      <span className="text-ink-secondary">Within 24 Business Hours (Mon – Sat, 9:00 AM – 6:00 PM IST)</span>
                     </div>
                   </div>
                 </div>

@@ -2,9 +2,22 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/Button';
-import { Send, CheckCircle2, MessageCircle, Mail, Copy, Check } from 'lucide-react';
+import {
+  Send,
+  CheckCircle2,
+  MessageCircle,
+  Mail,
+  Copy,
+  Check,
+  Paperclip,
+  X,
+  AlertCircle,
+  Loader2,
+  FileText,
+} from 'lucide-react';
+import { submitEnquiryAction } from '@/actions/enquiry';
 
-interface FormData {
+interface FormState {
   studentName: string;
   email: string;
   phone: string;
@@ -23,7 +36,7 @@ interface FormErrors {
 }
 
 export function ContactForm() {
-  const [formData, setFormData] = useState<FormData>({
+  const [formData, setFormData] = useState<FormState>({
     studentName: '',
     email: '',
     phone: '',
@@ -37,8 +50,13 @@ export function ContactForm() {
     consent: false,
   });
 
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [referenceNumber, setReferenceNumber] = useState('');
   const [copied, setCopied] = useState(false);
 
   const validate = (): boolean => {
@@ -72,15 +90,88 @@ export function ContactForm() {
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setAttachmentError(null);
+    const file = e.target.files?.[0];
+    if (!file) {
+      setAttachment(null);
+      return;
+    }
+
+    // Client-side quick checks
+    const allowedExts = ['.pdf', '.docx', '.zip'];
+    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+    if (!allowedExts.includes(ext)) {
+      setAttachmentError('Only .pdf, .docx, and .zip files are allowed.');
+      setAttachment(null);
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setAttachmentError('File size exceeds the 10 MB limit.');
+      setAttachment(null);
+      return;
+    }
+
+    setAttachment(file);
+  };
+
+  const handleRemoveFile = () => {
+    setAttachment(null);
+    setAttachmentError(null);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (validate()) {
-      setIsSubmitted(true);
+    setServerError(null);
+
+    if (!validate()) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const data = new FormData();
+      data.append('studentName', formData.studentName);
+      data.append('email', formData.email);
+      data.append('phone', formData.phone);
+      data.append('college', formData.college);
+      data.append('department', formData.department);
+      data.append('domain', formData.domain);
+      data.append('service', formData.service);
+      data.append('approxBudget', formData.approxBudget);
+      data.append('expectedDeadline', formData.expectedDeadline);
+      data.append('description', formData.description);
+      data.append('consent', formData.consent ? 'true' : 'false');
+
+      if (attachment) {
+        data.append('attachment', attachment);
+      }
+
+      const result = await submitEnquiryAction(data);
+
+      if (result.success && result.referenceNumber) {
+        setReferenceNumber(result.referenceNumber);
+        setIsSubmitted(true);
+      } else {
+        if (result.issues) {
+          setErrors(result.issues);
+        }
+        setServerError(
+          result.error || 'Failed to submit enquiry. Please check your inputs or try again.'
+        );
+      }
+    } catch {
+      setServerError('An unexpected network error occurred. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const summaryText =
-    `ASHKRI Academic Solutions - Project Consultation Request\n\n` +
+    `ASHKRI Academic Solutions - Project Consultation Request\n` +
+    `Reference Number: ${referenceNumber || 'Pending Submission'}\n\n` +
     `Student Name: ${formData.studentName}\n` +
     `Email: ${formData.email}\n` +
     `Phone/WhatsApp: ${formData.phone}\n` +
@@ -89,8 +180,9 @@ export function ContactForm() {
     `Domain: ${formData.domain}\n` +
     `Required Service: ${formData.service}\n` +
     `Budget Range: ${formData.approxBudget}\n` +
-    `Deadline: ${formData.expectedDeadline || 'Flexible'}\n\n` +
-    `Project Description:\n${formData.description}\n`;
+    `Deadline: ${formData.expectedDeadline || 'Flexible'}\n` +
+    (attachment ? `Attachment: ${attachment.name}\n` : '') +
+    `\nProject Description:\n${formData.description}\n`;
 
   const mailtoBody = encodeURIComponent(summaryText);
 
@@ -113,13 +205,13 @@ export function ContactForm() {
 
         <div>
           <span className="text-xs font-heading font-extrabold uppercase tracking-widest text-accent-brass block mb-2">
-            Validation Complete · Ready to Dispatch
+            Enquiry Confirmed · Reference ID: {referenceNumber}
           </span>
           <h3 className="text-xl sm:text-2xl font-heading font-bold text-ink-primary mb-3">
-            Your enquiry is ready to send
+            Your enquiry has been successfully logged
           </h3>
           <p className="text-xs sm:text-sm text-ink-secondary max-w-lg mx-auto font-body leading-relaxed">
-            Your consultation request has been validated. Online automatic database transmission activates in Phase 3. To ensure you never lose entered information, copy your summary below or dispatch it directly through our verified channels:
+            Your consultation request has been recorded in our engineering database. An academic coordinator has been notified and will evaluate your project scope within 24 business hours (Mon – Sat, 9:00 AM – 6:00 PM IST). Keep your reference number below for direct tracking:
           </p>
         </div>
 
@@ -151,12 +243,12 @@ export function ContactForm() {
           <Button
             variant="primary"
             size="md"
-            href={`mailto:contact@ashkri.com?subject=Project%20Enquiry%20-%20${encodeURIComponent(
-              formData.studentName
-            )}&body=${mailtoBody}`}
+            href={`mailto:contact@ashkri.com?subject=Project%20Enquiry%20[${encodeURIComponent(
+              referenceNumber
+            )}]%20-%20${encodeURIComponent(formData.studentName)}&body=${mailtoBody}`}
           >
             <Mail className="w-4 h-4 mr-2" />
-            Send via Email
+            Email Coordinator
           </Button>
 
           <Button
@@ -173,15 +265,18 @@ export function ContactForm() {
 
         <div className="pt-2 border-t border-seam-subtle">
           <p className="text-xs text-ink-secondary/80 font-body">
-            Please note: <span className="text-ink-primary font-mono font-medium">contact@ashkri.com</span> is our designated corporate mailbox. For immediate direct communication during pre-launch, connect directly via Telegram or copy your summary above.
+            Official Coordinator Contact: <span className="text-ink-primary font-mono font-medium">contact@ashkri.com</span>. Cite your reference number <span className="text-accent-brass font-mono font-semibold">{referenceNumber}</span> in all correspondence for prioritized review.
           </p>
         </div>
 
         <button
-          onClick={() => setIsSubmitted(false)}
+          onClick={() => {
+            setIsSubmitted(false);
+            setAttachment(null);
+          }}
           className="text-xs text-ink-secondary/70 hover:text-ink-primary underline font-body pt-1 block mx-auto"
         >
-          ← Edit form responses
+          ← Submit another consultation enquiry
         </button>
       </div>
     );
@@ -189,6 +284,26 @@ export function ContactForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-6">
+      {serverError && (
+        <div
+          role="alert"
+          className="p-3.5 rounded-editorial bg-status-error/10 border border-status-error/30 text-xs text-status-error font-body flex items-start gap-2.5"
+        >
+          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>{serverError}</span>
+        </div>
+      )}
+
+      {/* Honeypot hidden input for anti-bot trap */}
+      <input
+        type="text"
+        name="website_verification"
+        tabIndex={-1}
+        autoComplete="off"
+        className="hidden"
+        aria-hidden="true"
+      />
+
       {/* Name & Email Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <div>
@@ -381,6 +496,56 @@ export function ContactForm() {
         )}
       </div>
 
+      {/* Optional Attachment Upload */}
+      <div>
+        <label className="block text-xs font-heading font-bold text-ink-primary mb-2">
+          Project Document or IEEE Base Paper <span className="text-ink-secondary font-normal">(Optional · Max 10 MB)</span>
+        </label>
+        <div className="relative">
+          {!attachment ? (
+            <label
+              htmlFor="attachment"
+              className="flex items-center justify-center gap-2 px-4 py-3 border border-dashed border-seam-strong hover:border-accent-brass rounded-editorial cursor-pointer bg-surface-primary hover:bg-surface-elevated/40 transition-colors text-xs font-body text-ink-secondary"
+            >
+              <Paperclip className="w-4 h-4 text-accent-brass" />
+              <span>Attach problem statement, IEEE paper, or requirements (.pdf, .docx, .zip)</span>
+              <input
+                id="attachment"
+                name="attachment"
+                type="file"
+                accept=".pdf,.docx,.zip,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip"
+                onChange={handleFileChange}
+                className="sr-only"
+              />
+            </label>
+          ) : (
+            <div className="flex items-center justify-between px-3.5 py-2.5 bg-surface-elevated border border-seam-strong rounded-editorial text-xs">
+              <div className="flex items-center gap-2 text-ink-primary truncate">
+                <FileText className="w-4 h-4 text-accent-brass flex-shrink-0" />
+                <span className="truncate font-medium">{attachment.name}</span>
+                <span className="text-ink-secondary text-[11px] flex-shrink-0">
+                  ({(attachment.size / 1024).toFixed(0)} KB)
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleRemoveFile}
+                className="p-1 text-ink-secondary hover:text-status-error transition-colors rounded"
+                title="Remove attachment"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+        {attachmentError && (
+          <p className="mt-1.5 text-xs text-status-error font-body">{attachmentError}</p>
+        )}
+        {errors.attachment && (
+          <p className="mt-1.5 text-xs text-status-error font-body">{errors.attachment}</p>
+        )}
+      </div>
+
       {/* Consent Checkbox */}
       <div>
         <label className="flex items-start gap-3 cursor-pointer">
@@ -399,11 +564,25 @@ export function ContactForm() {
         )}
       </div>
 
-      <Button variant="primary" size="lg" type="submit" className="w-full">
-        <Send className="w-4 h-4 mr-2" />
-        Validate & Submit Consultation Request
+      <Button
+        variant="primary"
+        size="lg"
+        type="submit"
+        disabled={isSubmitting}
+        className="w-full disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        {isSubmitting ? (
+          <>
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            Submitting Consultation Request...
+          </>
+        ) : (
+          <>
+            <Send className="w-4 h-4 mr-2" />
+            Validate & Submit Consultation Request
+          </>
+        )}
       </Button>
     </form>
   );
 }
-
