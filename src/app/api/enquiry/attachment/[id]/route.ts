@@ -31,11 +31,14 @@ export async function GET(
 
     // Security quarantine verification:
     // Only verified CLEAN files are permitted for authorized download.
+    // PENDING_SCAN and QUARANTINED files are strictly locked.
     if (attachment.scanStatus !== 'CLEAN') {
+      const isPending = attachment.scanStatus === 'PENDING_SCAN';
       return NextResponse.json(
         {
-          error:
-            'Access denied: This attachment is quarantined or pending security analysis.',
+          error: isPending
+            ? 'Access denied: This attachment is currently awaiting automated malware verification and cannot be downloaded yet.'
+            : 'Access denied: This attachment has been quarantined due to security verification failure.',
           scanStatus: attachment.scanStatus,
           scanDetails: attachment.scanDetails,
         },

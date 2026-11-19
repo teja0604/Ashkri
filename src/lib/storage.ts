@@ -10,9 +10,9 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
-export const MAX_ZIP_UNCOMPRESSED_BYTES = 50 * 1024 * 1024; // 50 MB total decompressed
-export const MAX_ZIP_ENTRIES = 250; // Maximum archive entries
+export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB maximum uploaded payload
+export const MAX_ZIP_UNCOMPRESSED_BYTES = 50 * 1024 * 1024; // 50 MB total decompressed maximum
+export const MAX_ZIP_ENTRIES = 250; // Maximum archive entries permitted
 export const MAX_COMPRESSION_RATIO = 10; // Maximum allowable compression ratio (prevents zip bombs)
 
 export const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.zip'] as const;
@@ -91,7 +91,7 @@ export function validatePdfStructure(buffer: Buffer): FileValidationResult {
   return { valid: true, detectedType: 'application/pdf' };
 }
 
-interface ZipInspectionResult {
+export interface ZipInspectionResult {
   valid: boolean;
   error?: string;
   entryNames: string[];
@@ -100,8 +100,19 @@ interface ZipInspectionResult {
 }
 
 /**
- * Parses and verifies ZIP central directory headers safely from buffer.
- * Enforces entry count, uncompressed size limits, compression ratios, and blocks path traversal / executables.
+ * Robust ZIP Archive Validator & Resource Limits Enforcer
+ * 
+ * Verifies:
+ * - End of Central Directory (EOCD) signature and structure
+ * - Full record boundaries (Central Directory Header, Local File Header, comments, extra fields)
+ * - Two-way consistency between Central Directory entries and Local File Headers
+ * - Entry count bounds (<= 250)
+ * - Compression methods (0 = Stored, 8 = Deflated only)
+ * - Rejection of encrypted entries
+ * - Total decompressed size bounds (<= 50 MB)
+ * - Per-entry and global compression ratio limits (<= 10:1)
+ * - Cross-platform path traversal rejection (../, ..\, absolute paths, null bytes)
+ * - Executable content rejection
  */
 export function inspectZipStructure(buffer: Buffer): ZipInspectionResult {
   if (buffer.length < 22) {
@@ -141,7 +152,7 @@ export function inspectZipStructure(buffer: Buffer): ZipInspectionResult {
   if (totalEntries > MAX_ZIP_ENTRIES) {
     return {
       valid: false,
-      error: `ZIP archive contains ${totalEntries} entries, exceeding the maximum limit of ${MAX_ZIP_ENTRIES}.`,
+      error: `Security violation: ZIP archive contains ${totalEntries} entries, exceeding the maximum limit of ${MAX_ZIP_ENTRIES}.`,
       entryNames: [],
       totalUncompressedSize: 0,
       totalCompressedSize: 0,
@@ -158,18 +169,31 @@ export function inspectZipStructure(buffer: Buffer): ZipInspectionResult {
   const entryNames: string[] = [];
 
   for (let i = 0; i < totalEntries; i++) {
-    if (currentOffset + 46 > buffer.length) {
-      return { valid: false, error: 'Corrupt ZIP archive: Truncated directory record.', entryNames, totalUncompressedSize: totalUncompressed, totalCompressedSize: totalCompressed };
+    // Must have at least 46 bytes for CD entry header
+    if (currentOffset + 46 > cdOffset + cdSize) {
+      return { valid: false, error: 'Corrupt ZIP archive: Truncated central directory header record.', entryNames, totalUncompressedSize: totalUncompressed, totalCompressedSize: totalCompressed };
     }
 
-    // Verify Central Directory File Header signature (0x02014b50)
+    // Verify Central Directory signature (0x02014b50)
     if (
       buffer[currentOffset] !== 0x50 ||
       buffer[currentOffset + 1] !== 0x4b ||
       buffer[currentOffset + 2] !== 0x01 ||
       buffer[currentOffset + 3] !== 0x02
     ) {
-      return { valid: false, error: 'Corrupt ZIP archive: Invalid central directory signature.', entryNames, totalUncompressedSize: totalUncompressed, totalCompressedSize: totalCompressed };
+      return { valid: false, error: 'Corrupt ZIP archive: Invalid central directory entry signature.', entryNames, totalUncompressedSize: totalUncompressed, totalCompressedSize: totalCompressed };
+    }
+
+    const generalFlag = buffer.readUInt16LE(currentOffset + 8);
+    // Bit 0: Encrypted file
+    if ((generalFlag & 0x01) !== 0) {
+      return { valid: false, error: 'Security violation: Encrypted or password-protected archives are not permitted for consultation reviews.', entryNames, totalUncompressedSize: totalUncompressed, totalCompressedSize: totalCompressed };
+    }
+
+    const compressionMethod = buffer.readUInt16LE(currentOffset + 10);
+    // Method 0 (stored) and 8 (deflate) are standard. Reject unsupported/obsolete methods.
+    if (compressionMethod !== 0 && compressionMethod !== 8) {
+      return { valid: false, error: `Security violation: Unsupported ZIP compression method ${compressionMethod}.`, entryNames, totalUncompressedSize: totalUncompressed, totalCompressedSize: totalCompressed };
     }
 
     const compressedSize = buffer.readUInt32LE(currentOffset + 20);
@@ -177,15 +201,23 @@ export function inspectZipStructure(buffer: Buffer): ZipInspectionResult {
     const fileNameLength = buffer.readUInt16LE(currentOffset + 28);
     const extraFieldLength = buffer.readUInt16LE(currentOffset + 30);
     const fileCommentLength = buffer.readUInt16LE(currentOffset + 32);
+    const localHeaderOffset = buffer.readUInt32LE(currentOffset + 42);
 
-    if (currentOffset + 46 + fileNameLength > buffer.length) {
-      return { valid: false, error: 'Corrupt ZIP archive: Entry filename extends beyond bounds.', entryNames, totalUncompressedSize: totalUncompressed, totalCompressedSize: totalCompressed };
+    // Validate entire entry bounds (header + filename + extra + comment)
+    const fullEntryLength = 46 + fileNameLength + extraFieldLength + fileCommentLength;
+    if (currentOffset + fullEntryLength > cdOffset + cdSize) {
+      return { valid: false, error: 'Corrupt ZIP archive: Central directory entry fields exceed central directory bounds.', entryNames, totalUncompressedSize: totalUncompressed, totalCompressedSize: totalCompressed };
     }
 
     const entryName = buffer.toString('utf8', currentOffset + 46, currentOffset + 46 + fileNameLength);
     entryNames.push(entryName);
 
-    // Path traversal check
+    // Reject null bytes in filenames
+    if (entryName.includes('\0')) {
+      return { valid: false, error: 'Security violation: Null byte detected in archive entry name.', entryNames, totalUncompressedSize: totalUncompressed, totalCompressedSize: totalCompressed };
+    }
+
+    // Path traversal validation
     if (
       entryName.includes('../') ||
       entryName.includes('..\\') ||
@@ -202,7 +234,7 @@ export function inspectZipStructure(buffer: Buffer): ZipInspectionResult {
       };
     }
 
-    // Disallowed executable extensions inside archive
+    // Disallowed executable extensions
     const entryExt = path.extname(entryName).toLowerCase();
     if (BLOCKED_ARCHIVE_EXTENSIONS.includes(entryExt as (typeof BLOCKED_ARCHIVE_EXTENSIONS)[number])) {
       return {
@@ -214,7 +246,7 @@ export function inspectZipStructure(buffer: Buffer): ZipInspectionResult {
       };
     }
 
-    // Individual entry zip bomb check
+    // Zip bomb ratio protection
     if (compressedSize > 1024 && uncompressedSize / compressedSize > MAX_COMPRESSION_RATIO) {
       return {
         valid: false,
@@ -225,20 +257,52 @@ export function inspectZipStructure(buffer: Buffer): ZipInspectionResult {
       };
     }
 
+    // Local File Header Consistency Check
+    if (localHeaderOffset + 30 > buffer.length) {
+      return { valid: false, error: `Corrupt ZIP archive: Local header offset out of bounds for "${entryName}".`, entryNames, totalUncompressedSize: totalUncompressed, totalCompressedSize: totalCompressed };
+    }
+
+    // Verify Local File Header signature (0x04034b50)
+    if (
+      buffer[localHeaderOffset] !== 0x50 ||
+      buffer[localHeaderOffset + 1] !== 0x4b ||
+      buffer[localHeaderOffset + 2] !== 0x03 ||
+      buffer[localHeaderOffset + 3] !== 0x04
+    ) {
+      return { valid: false, error: `Corrupt or forged ZIP archive: Local file header signature mismatch for "${entryName}".`, entryNames, totalUncompressedSize: totalUncompressed, totalCompressedSize: totalCompressed };
+    }
+
+    const localMethod = buffer.readUInt16LE(localHeaderOffset + 8);
+    const localNameLength = buffer.readUInt16LE(localHeaderOffset + 26);
+    const localExtraLength = buffer.readUInt16LE(localHeaderOffset + 28);
+
+    if (localHeaderOffset + 30 + localNameLength + localExtraLength > buffer.length) {
+      return { valid: false, error: `Corrupt ZIP archive: Local header record exceeds file bounds for "${entryName}".`, entryNames, totalUncompressedSize: totalUncompressed, totalCompressedSize: totalCompressed };
+    }
+
+    const localEntryName = buffer.toString('utf8', localHeaderOffset + 30, localHeaderOffset + 30 + localNameLength);
+    if (localEntryName !== entryName) {
+      return { valid: false, error: `Security violation: Mismatch between central directory name ("${entryName}") and local header name ("${localEntryName}").`, entryNames, totalUncompressedSize: totalUncompressed, totalCompressedSize: totalCompressed };
+    }
+
+    if (localMethod !== compressionMethod) {
+      return { valid: false, error: `Security violation: Compression method mismatch between local header and central directory for "${entryName}".`, entryNames, totalUncompressedSize: totalUncompressed, totalCompressedSize: totalCompressed };
+    }
+
     totalCompressed += compressedSize;
     totalUncompressed += uncompressedSize;
 
     if (totalUncompressed > MAX_ZIP_UNCOMPRESSED_BYTES) {
       return {
         valid: false,
-        error: `Archive decompressed size exceeds maximum limit of 50 MB (found ${(totalUncompressed / (1024 * 1024)).toFixed(1)} MB).`,
+        error: `Security violation: Archive decompressed size exceeds maximum limit of 50 MB (found ${(totalUncompressed / (1024 * 1024)).toFixed(1)} MB).`,
         entryNames,
         totalUncompressedSize: totalUncompressed,
         totalCompressedSize: totalCompressed,
       };
     }
 
-    currentOffset += 46 + fileNameLength + extraFieldLength + fileCommentLength;
+    currentOffset += fullEntryLength;
   }
 
   return {

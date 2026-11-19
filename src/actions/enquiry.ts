@@ -12,8 +12,8 @@ import {
   deleteStoredAttachment,
   StoredAttachmentResult,
 } from '@/lib/storage';
-import { sendEnquiryNotifications } from '@/lib/email';
-import { isDatabaseConfigured } from '@/lib/env';
+import { OutboxDispatcher } from '@/lib/email';
+import { getEmailConfig, isDatabaseConfigured } from '@/lib/env';
 
 export interface ActionResponse {
   success: boolean;
@@ -26,7 +26,7 @@ export async function submitEnquiryAction(formData: FormData): Promise<ActionRes
   let storedAttachment: StoredAttachmentResult | null = null;
 
   try {
-    // 1. Extract client IP securely using trusted proxy resolution
+    // 1. Extract client IP securely using platform-authenticated reverse proxy boundary
     let clientIp = '127.0.0.1';
     try {
       const headerList = await headers();
@@ -36,11 +36,18 @@ export async function submitEnquiryAction(formData: FormData): Promise<ActionRes
       clientIp = '127.0.0.1';
     }
 
+    // Fail closed in production if headers cannot be authenticated against trusted platform boundary
+    if (clientIp === 'untrusted-proxy-boundary') {
+      return {
+        success: false,
+        error: 'Security rejection: Request could not be verified against the trusted deployment proxy boundary.',
+      };
+    }
+
     const isLocalhost = isLocalhostIp(clientIp);
     const ipHash = hashIp(clientIp);
 
-    // 2. Enforce distributed atomic rate limiting
-    // (5 submissions / 15 minutes for public visitors, 100 for localhost / automated tests)
+    // 2. Enforce distributed atomic rate limiting (fails closed in production if DB is unreachable)
     const rateLimit = await checkDistributedRateLimit(ipHash, 5, 15 * 60 * 1000, isLocalhost);
     if (!rateLimit.success) {
       return {
@@ -100,7 +107,7 @@ export async function submitEnquiryAction(formData: FormData): Promise<ActionRes
       };
     }
 
-    // 6. Handle optional file attachment
+    // 6. Handle optional file attachment with deep structural inspection
     const file = formData.get('attachment');
     let attachmentBuffer: Buffer | null = null;
     let originalFilename = '';
@@ -176,9 +183,36 @@ export async function submitEnquiryAction(formData: FormData): Promise<ActionRes
       );
     }
 
-    // 10. Persist enquiry inside a Prisma transaction with compensating rollback
+    // 10. Prepare durable transactional outbox records and payload
+    const emailConfig = getEmailConfig();
+    const adminKey = `${enquiryId}_ADMIN_NOTIFICATION`;
+    const studentKey = `${enquiryId}_STUDENT_ACKNOWLEDGMENT`;
+
+    const outboxPayloadData = {
+      enquiryId,
+      referenceNumber,
+      studentName: validData.studentName,
+      email: validData.email,
+      phone: validData.phone,
+      college: validData.college,
+      department: validData.department,
+      domain: validData.domain,
+      service: validData.service,
+      approxBudget: validData.approxBudget ?? null,
+      expectedDeadline: validData.expectedDeadline ?? null,
+      description: validData.description,
+      attachmentName: originalFilename || null,
+    };
+    const payloadJson = JSON.stringify(outboxPayloadData);
+
+    const adminSubject = `[Enquiry] ${referenceNumber} - ${validData.studentName} (${validData.department})`;
+    const studentSubject = `Consultation Request Received - Reference: ${referenceNumber}`;
+
+    // 11. Atomic PostgreSQL Transaction:
+    // Guarantees that Enquiry, Attachment metadata, and BOTH Email Outbox records are created together!
     try {
       const newEnquiry = await prisma.$transaction(async (tx) => {
+        // 1. Core Enquiry
         const enquiry = await tx.enquiry.create({
           data: {
             id: enquiryId,
@@ -200,7 +234,7 @@ export async function submitEnquiryAction(formData: FormData): Promise<ActionRes
           },
         });
 
-        // Record initial status history
+        // 2. Initial Status History
         await tx.enquiryStatusHistory.create({
           data: {
             enquiryId: enquiry.id,
@@ -210,7 +244,7 @@ export async function submitEnquiryAction(formData: FormData): Promise<ActionRes
           },
         });
 
-        // Store attachment record if present
+        // 3. Attachment Record — Default to PENDING_SCAN! (Never declare CLEAN without external scan)
         if (storedAttachment) {
           await tx.enquiryAttachment.create({
             data: {
@@ -220,30 +254,43 @@ export async function submitEnquiryAction(formData: FormData): Promise<ActionRes
               mimeType: storedAttachment.mimeType,
               sizeBytes: storedAttachment.sizeBytes,
               checksum: storedAttachment.checksum,
-              scanStatus: 'CLEAN',
+              scanStatus: 'PENDING_SCAN', // Quarantined until scan completes
+              scanDetails: 'Awaiting automated malware verification.',
             },
           });
         }
 
+        // 4. Admin Notification Outbox Record (Inside transaction)
+        await tx.emailOutbox.create({
+          data: {
+            enquiryId: enquiry.id,
+            idempotencyKey: adminKey,
+            recipient: emailConfig.adminEmail,
+            subject: adminSubject,
+            templateName: 'ADMIN_NOTIFICATION',
+            payloadJson,
+            status: 'PENDING',
+          },
+        });
+
+        // 5. Student Acknowledgment Outbox Record (Inside transaction)
+        await tx.emailOutbox.create({
+          data: {
+            enquiryId: enquiry.id,
+            idempotencyKey: studentKey,
+            recipient: validData.email,
+            subject: studentSubject,
+            templateName: 'STUDENT_ACKNOWLEDGMENT',
+            payloadJson,
+            status: 'PENDING',
+          },
+        });
+
         return enquiry;
       });
 
-      // 11. Dispatch durable outbox notifications
-      await sendEnquiryNotifications({
-        enquiryId: newEnquiry.id,
-        referenceNumber: newEnquiry.referenceNumber,
-        studentName: newEnquiry.studentName,
-        email: newEnquiry.email,
-        phone: newEnquiry.phone,
-        college: newEnquiry.college,
-        department: newEnquiry.department,
-        domain: newEnquiry.domain,
-        service: newEnquiry.service,
-        approxBudget: newEnquiry.approxBudget,
-        expectedDeadline: newEnquiry.expectedDeadline,
-        description: newEnquiry.description,
-        attachmentName: originalFilename || null,
-      });
+      // 12. Trigger concurrency-safe outbox dispatch after successful transaction commit
+      await OutboxDispatcher.processPending(newEnquiry.id);
 
       return {
         success: true,

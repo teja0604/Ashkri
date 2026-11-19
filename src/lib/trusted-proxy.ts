@@ -1,20 +1,22 @@
 import net from 'node:net';
 
 /**
- * Extracts and sanitizes the true client IP from incoming request headers.
+ * ASHKRI Academic Solutions — Trusted Proxy Resolution & Anti-Spoofing Architecture
  * 
- * Security Consideration (Anti-Spoofing):
- * Naive implementations often parse `x-forwarded-for` from left to right.
- * An attacker can trivially send `X-Forwarded-For: 8.8.8.8` to spoof their client IP
- * and bypass IP-based rate limiting if intermediate proxies append rather than overwrite.
+ * Deployment Boundary Specification (Vercel Edge Network):
+ * When deployed on Vercel:
+ * 1. `x-vercel-forwarded-for`: Authenticated and injected by the Vercel Edge proxy layer.
+ *    Vercel overrides or populates this header with the verified TCP remote IP of the client.
+ *    Untrusted visitors cannot spoof or inject this header.
+ * 2. `cf-connecting-ip`: When DNS is proxied via Cloudflare Enterprise / Pro, Cloudflare
+ *    authenticates and sets `cf-connecting-ip` to the client's verified connection IP.
+ * 3. In production (`NODE_ENV === 'production'`), generic unauthenticated headers such as
+ *    arbitrary client-supplied `x-forwarded-for` or `x-real-ip` MUST NOT be trusted
+ *    without the platform edge header being present.
  * 
- * In production on Vercel or Cloudflare:
- * 1. `x-vercel-forwarded-for` is set and authenticated by the Vercel Edge network.
- * 2. `cf-connecting-ip` is set and authenticated by the Cloudflare Edge network.
- * 3. `x-real-ip` is set by standard reverse proxies (Nginx/Traefik).
- * 4. For generic `x-forwarded-for`, if trusted proxies are in place, the rightmost IP
- *    closest to the proxy is the most reliable when proxy hops are known, or we pick
- *    the first strictly validated public IP while rejecting malformed inputs.
+ * Local Development & Testing Boundary:
+ * For Vitest and Playwright test runners running locally, fallback to loopback `127.0.0.1`
+ * or explicitly mocked test headers is permitted.
  */
 
 export interface HeaderSource {
@@ -57,8 +59,14 @@ export function isLocalhostIp(ip: string): boolean {
   );
 }
 
+export interface ClientIpResult {
+  ip: string;
+  isTrusted: boolean;
+  sourceHeader: string;
+}
+
 /**
- * Extract trusted client IP from Headers object or dictionary.
+ * Extracts and strictly authenticates client IP against the verified deployment platform boundary.
  */
 export function extractClientIp(
   headers: HeaderSource | Headers | Record<string, string | string[] | undefined>
@@ -67,40 +75,64 @@ export function extractClientIp(
     if ('get' in headers && typeof headers.get === 'function') {
       return headers.get(name);
     }
-    const val = (headers as Record<string, string | string[] | undefined>)[name.toLowerCase()] ??
+    const val =
+      (headers as Record<string, string | string[] | undefined>)[name.toLowerCase()] ??
       (headers as Record<string, string | string[] | undefined>)[name];
     if (Array.isArray(val)) return val[0] || null;
     return typeof val === 'string' ? val : null;
   };
 
-  // 1. Trusted provider platform-specific headers (highest precedence)
+  const isProduction =
+    process.env.NODE_ENV === 'production' && !process.env.ALLOW_MOCKED_SUBMISSIONS;
+
+  // 1. Primary Vercel-authenticated Edge Header (Guaranteed on Vercel infrastructure)
   const vercelForwarded = getHeader('x-vercel-forwarded-for');
   if (vercelForwarded) {
     const candidate = normalizeIp(vercelForwarded.split(',')[0]);
-    if (isValidIp(candidate)) return candidate;
+    if (isValidIp(candidate)) {
+      return candidate;
+    }
   }
 
+  // 2. Cloudflare-authenticated Edge Header
   const cfConnecting = getHeader('cf-connecting-ip');
   if (cfConnecting) {
     const candidate = normalizeIp(cfConnecting);
+    if (isValidIp(candidate)) {
+      return candidate;
+    }
+  }
+
+  // 3. Vercel deployment real-ip (populated by Vercel edge proxy)
+  if (process.env.VERCEL) {
+    const realIp = getHeader('x-real-ip');
+    if (realIp) {
+      const candidate = normalizeIp(realIp);
+      if (isValidIp(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  // In production outside verified edge headers:
+  // Reject unauthenticated client-supplied x-forwarded-for to prevent spoofing
+  if (isProduction) {
+    // If running in production but without platform edge headers (e.g. direct untrusted probe),
+    // return a sentinel unverified IP hash rather than trusting forged client headers.
+    return 'untrusted-proxy-boundary';
+  }
+
+  // 4. Local Development & Test Execution Boundary
+  const xRealIp = getHeader('x-real-ip');
+  if (xRealIp) {
+    const candidate = normalizeIp(xRealIp);
     if (isValidIp(candidate)) return candidate;
   }
 
-  const realIp = getHeader('x-real-ip');
-  if (realIp) {
-    const candidate = normalizeIp(realIp);
-    if (isValidIp(candidate)) return candidate;
-  }
-
-  // 2. Standard X-Forwarded-For
-  // Note on anti-spoofing: If a user sends "X-Forwarded-For: 1.2.3.4, 198.51.100.1",
-  // in a standard reverse proxy (like Vercel / Nginx), the proxy appends the client IP to the end.
-  // When multiple comma-separated IPs exist and no platform header is trusted, taking the right-most
-  // entry represents the peer IP that connected directly to the outermost proxy layer.
   const forwardedFor = getHeader('x-forwarded-for');
   if (forwardedFor) {
     const parts = forwardedFor.split(',').map((p) => normalizeIp(p)).filter(Boolean);
-    // Scan from rightmost (nearest upstream proxy) to leftmost for valid IP
+    // Take rightmost in test proxies
     for (let i = parts.length - 1; i >= 0; i--) {
       if (isValidIp(parts[i])) {
         return parts[i];
@@ -108,6 +140,6 @@ export function extractClientIp(
     }
   }
 
-  // 3. Fallback to localhost if no proxy headers are present (local dev / testing)
+  // Default fallback for unit test harnesses
   return '127.0.0.1';
 }

@@ -36,6 +36,7 @@ enum AttachmentScanStatus {
 
 enum OutboxStatus {
   PENDING
+  PROCESSING
   DELIVERED
   FAILED
   DEAD_LETTER
@@ -108,16 +109,18 @@ model EnquiryNote {
 }
 
 model EnquiryAttachment {
-  id           String               @id @default(uuid())
-  enquiryId    String
-  originalName String               @db.VarChar(255)
-  storageKey   String               @unique // Private S3/R2 storage path (UUID-based)
-  mimeType     String               @db.VarChar(100)
-  sizeBytes    Int
-  checksum     String               @db.VarChar(64) // SHA-256 hash of file content
-  scanStatus   AttachmentScanStatus @default(CLEAN)
-  scanDetails  String?              @db.VarChar(255)
-  uploadedAt   DateTime             @default(now())
+  id            String               @id @default(uuid())
+  enquiryId     String
+  originalName  String               @db.VarChar(255)
+  storageKey    String               @unique // Private S3/R2 storage path (UUID-based)
+  mimeType      String               @db.VarChar(100)
+  sizeBytes     Int
+  checksum      String               @db.VarChar(64) // SHA-256 hash of file content
+  scanStatus    AttachmentScanStatus @default(PENDING_SCAN)
+  scanDetails   String?              @db.VarChar(255)
+  scannerEngine String?              @db.VarChar(100)
+  scannedAt     DateTime?
+  uploadedAt    DateTime             @default(now())
 
   enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
 
@@ -156,6 +159,8 @@ model EmailOutbox {
   attempts       Int          @default(0)
   maxAttempts    Int          @default(3)
   nextRetryAt    DateTime     @default(now())
+  lockedAt       DateTime?    // Worker lease timestamp for concurrency safety
+  lockedBy       String?      @db.VarChar(100) // Unique worker instance ID
   deliveredAt    DateTime?
   errorReason    String?      @db.Text
   createdAt      DateTime     @default(now())
@@ -164,6 +169,7 @@ model EmailOutbox {
   enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
 
   @@index([status, nextRetryAt])
+  @@index([status, lockedAt])
   @@index([enquiryId])
 }
 

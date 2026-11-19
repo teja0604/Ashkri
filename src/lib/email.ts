@@ -21,6 +21,7 @@ export interface EnquiryEmailData {
 export interface SendEmailResult {
   success: boolean;
   error?: string;
+  providerMessageId?: string;
 }
 
 /**
@@ -131,24 +132,31 @@ export function renderStudentAcknowledgmentHtml(data: EnquiryEmailData): string 
 }
 
 /**
- * Dispatches an email via Resend API or SMTP
+ * Dispatches an email via Resend API or SMTP.
+ * Supports provider-level idempotency key to prevent double delivery on transport retries.
  */
 export async function transportEmail(
   to: string,
   subject: string,
-  html: string
+  html: string,
+  idempotencyKey?: string
 ): Promise<SendEmailResult> {
   const config = getEmailConfig();
 
-  // 1. If Resend API Key is provided, use Resend HTTP API
+  // 1. If Resend API Key is provided, use Resend HTTP API with Idempotency-Key
   if (config.resendApiKey) {
     try {
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${config.resendApiKey}`,
+        'Content-Type': 'application/json',
+      };
+      if (idempotencyKey) {
+        headers['Idempotency-Key'] = idempotencyKey;
+      }
+
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${config.resendApiKey}`,
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           from: config.fromEmail,
           to: [to],
@@ -161,7 +169,9 @@ export async function transportEmail(
         const text = await res.text();
         return { success: false, error: `Resend API error (${res.status}): ${text}` };
       }
-      return { success: true };
+
+      const resJson = (await res.json().catch(() => ({}))) as { id?: string };
+      return { success: true, providerMessageId: resJson.id };
     } catch (err) {
       return { success: false, error: (err as Error).message };
     }
@@ -183,14 +193,15 @@ export async function transportEmail(
             : undefined,
       });
 
-      await transporter.sendMail({
+      const info = await transporter.sendMail({
         from: config.fromEmail,
         to,
         subject,
         html,
+        headers: idempotencyKey ? { 'X-Idempotency-Key': idempotencyKey } : undefined,
       });
 
-      return { success: true };
+      return { success: true, providerMessageId: info.messageId };
     } catch (err) {
       return { success: false, error: (err as Error).message };
     }
@@ -200,70 +211,124 @@ export async function transportEmail(
   if (process.env.NODE_ENV !== 'production') {
     console.info(`[EMAIL SIMULATION] Sent to: ${to} | Subject: "${subject}"`);
   }
-  return { success: true };
+  return { success: true, providerMessageId: `sim-${Date.now()}` };
 }
 
 /**
- * Durable Transactional Email Outbox Handler
+ * Concurrency-Safe Transactional Outbox Dispatcher
  * 
- * Supports:
- * - Idempotent dispatch (never duplicate email send)
- * - Exponential backoff retry on provider failures
- * - Dead-letter queue tracking after max retries
+ * Delivery Semantics:
+ * At-least-once delivery with atomic database lease claiming, worker concurrency protection,
+ * provider-level idempotency headers, bounded retries (max 3), exponential backoff,
+ * lease expiration for interrupted worker recovery, and dead-letter tracking.
  */
 export class OutboxDispatcher {
   /**
-   * Dispatches a single outbox entry by ID.
-   * Atomically checks for duplicate dispatch.
+   * Atomically claims an outbox record with a worker lease to guarantee that
+   * two concurrent serverless workers cannot dispatch the same record simultaneously.
    */
-  static async dispatchOutboxRecord(outboxId: string): Promise<SendEmailResult> {
+  static async claimOutboxRecord(
+    outboxId: string,
+    workerId: string = `worker-${Math.random().toString(36).substring(2, 9)}`
+  ): Promise<{ claimed: boolean; record?: any }> {
+    if (!isDatabaseConfigured()) {
+      return { claimed: false };
+    }
+
+    try {
+      // 5-minute worker lease expiry
+      const leaseExpiry = new Date(Date.now() - 5 * 60 * 1000);
+
+      // Atomic conditional update
+      const updated = await prisma.$executeRaw`
+        UPDATE "EmailOutbox"
+        SET 
+          "status" = 'PROCESSING'::"OutboxStatus",
+          "lockedAt" = NOW(),
+          "lockedBy" = ${workerId},
+          "updatedAt" = NOW()
+        WHERE "id" = ${outboxId}
+          AND (
+            "status" = 'PENDING'::"OutboxStatus"
+            OR ("status" = 'FAILED'::"OutboxStatus" AND "nextRetryAt" <= NOW())
+            OR ("status" = 'PROCESSING'::"OutboxStatus" AND "lockedAt" <= ${leaseExpiry})
+          );
+      `;
+
+      if (updated > 0) {
+        const record = await prisma.emailOutbox.findUnique({
+          where: { id: outboxId },
+        });
+        return { claimed: true, record };
+      }
+
+      return { claimed: false };
+    } catch (err) {
+      console.error('[Outbox Claim Error]', (err as Error).message);
+      return { claimed: false };
+    }
+  }
+
+  /**
+   * Dispatches a single claimed outbox record idempotently.
+   */
+  static async dispatchOutboxRecord(
+    outboxId: string,
+    workerId: string = `worker-${Math.random().toString(36).substring(2, 9)}`
+  ): Promise<SendEmailResult> {
     if (!isDatabaseConfigured()) {
       return { success: true };
     }
 
-    const outboxItem = await prisma.emailOutbox.findUnique({
-      where: { id: outboxId },
-    });
-
-    if (!outboxItem) {
-      return { success: false, error: 'Outbox record not found' };
-    }
-
-    // Idempotency: If already delivered, abort immediately to prevent duplicate dispatch
-    if (outboxItem.status === 'DELIVERED') {
+    // 1. Atomically claim record
+    const { claimed, record } = await OutboxDispatcher.claimOutboxRecord(outboxId, workerId);
+    if (!claimed || !record) {
+      // Already delivered, claimed by another worker, or retry not due
       return { success: true };
     }
 
-    if (outboxItem.attempts >= outboxItem.maxAttempts) {
-      return { success: false, error: 'Outbox record exceeded maximum retry attempts' };
-    }
-
-    // Render payload
+    // 2. Render payload
     let html = '';
-    const payload: EnquiryEmailData = JSON.parse(outboxItem.payloadJson);
+    const payload: EnquiryEmailData = JSON.parse(record.payloadJson);
 
-    if (outboxItem.templateName === 'ADMIN_NOTIFICATION') {
+    if (record.templateName === 'ADMIN_NOTIFICATION') {
       html = renderAdminNotificationHtml(payload);
-    } else if (outboxItem.templateName === 'STUDENT_ACKNOWLEDGMENT') {
+    } else if (record.templateName === 'STUDENT_ACKNOWLEDGMENT') {
       html = renderStudentAcknowledgmentHtml(payload);
     } else {
-      return { success: false, error: `Unknown template: ${outboxItem.templateName}` };
+      await prisma.emailOutbox.update({
+        where: { id: outboxId },
+        data: {
+          status: 'DEAD_LETTER',
+          errorReason: `Unknown template: ${record.templateName}`,
+          lockedAt: null,
+          lockedBy: null,
+        },
+      });
+      return { success: false, error: `Unknown template: ${record.templateName}` };
     }
 
-    // Attempt transport
-    const sendResult = await transportEmail(outboxItem.recipient, outboxItem.subject, html);
+    // 3. Attempt transport with provider idempotency key
+    const sendResult = await transportEmail(
+      record.recipient,
+      record.subject,
+      html,
+      record.idempotencyKey
+    );
 
     const now = new Date();
-    const newAttempts = outboxItem.attempts + 1;
+    const newAttempts = record.attempts + 1;
 
+    // 4. Update state based on outcome
     if (sendResult.success) {
-      // Mark as DELIVERED
       await prisma.emailOutbox.update({
         where: { id: outboxId },
         data: {
           status: 'DELIVERED',
           deliveredAt: now,
           attempts: newAttempts,
+          lockedAt: null,
+          lockedBy: null,
           errorReason: null,
         },
       });
@@ -272,10 +337,10 @@ export class OutboxDispatcher {
       try {
         await prisma.emailEvent.create({
           data: {
-            enquiryId: outboxItem.enquiryId,
-            recipient: outboxItem.recipient,
-            subject: outboxItem.subject,
-            templateName: outboxItem.templateName,
+            enquiryId: record.enquiryId,
+            recipient: record.recipient,
+            subject: record.subject,
+            templateName: record.templateName,
             delivered: true,
             errorReason: null,
           },
@@ -287,10 +352,10 @@ export class OutboxDispatcher {
       return { success: true };
     }
 
-    // On failure: calculate exponential backoff (e.g. 2^attempts minutes)
+    // Provider failed: exponential backoff (2^newAttempts minutes)
     const backoffMs = Math.pow(2, newAttempts) * 60 * 1000;
     const nextRetry = new Date(now.getTime() + backoffMs);
-    const finalStatus = newAttempts >= outboxItem.maxAttempts ? 'DEAD_LETTER' : 'FAILED';
+    const finalStatus = newAttempts >= record.maxAttempts ? 'DEAD_LETTER' : 'FAILED';
 
     await prisma.emailOutbox.update({
       where: { id: outboxId },
@@ -298,6 +363,8 @@ export class OutboxDispatcher {
         status: finalStatus,
         attempts: newAttempts,
         nextRetryAt: nextRetry,
+        lockedAt: null,
+        lockedBy: null,
         errorReason: sendResult.error || 'Transport failed',
       },
     });
@@ -305,10 +372,10 @@ export class OutboxDispatcher {
     try {
       await prisma.emailEvent.create({
         data: {
-          enquiryId: outboxItem.enquiryId,
-          recipient: outboxItem.recipient,
-          subject: outboxItem.subject,
-          templateName: outboxItem.templateName,
+          enquiryId: record.enquiryId,
+          recipient: record.recipient,
+          subject: record.subject,
+          templateName: record.templateName,
           delivered: false,
           errorReason: sendResult.error || 'Transport failed',
         },
@@ -321,7 +388,7 @@ export class OutboxDispatcher {
   }
 
   /**
-   * Scans and dispatches all pending or retryable outbox items for an enquiry or globally.
+   * Scans and dispatches all pending or retryable outbox items.
    */
   static async processPending(enquiryId?: string): Promise<{ dispatched: number; failed: number }> {
     if (!isDatabaseConfigured()) {
@@ -353,66 +420,4 @@ export class OutboxDispatcher {
 
     return { dispatched, failed };
   }
-}
-
-/**
- * Creates durable transactional outbox records and immediately attempts dispatch.
- */
-export async function sendEnquiryNotifications(data: EnquiryEmailData): Promise<void> {
-  const config = getEmailConfig();
-
-  // If database is configured, ensure outbox records exist and dispatch
-  if (isDatabaseConfigured()) {
-    try {
-      const adminKey = `${data.enquiryId}_ADMIN_NOTIFICATION`;
-      const studentKey = `${data.enquiryId}_STUDENT_ACKNOWLEDGMENT`;
-      const payloadJson = JSON.stringify(data);
-
-      // Create Admin Outbox item (upsert avoids duplicate on concurrent retries)
-      const adminOutbox = await prisma.emailOutbox.upsert({
-        where: { idempotencyKey: adminKey },
-        create: {
-          enquiryId: data.enquiryId,
-          idempotencyKey: adminKey,
-          recipient: config.adminEmail,
-          subject: `[Enquiry] ${data.referenceNumber} - ${data.studentName} (${data.department})`,
-          templateName: 'ADMIN_NOTIFICATION',
-          payloadJson,
-          status: 'PENDING',
-        },
-        update: {},
-      });
-
-      // Create Student Outbox item
-      const studentOutbox = await prisma.emailOutbox.upsert({
-        where: { idempotencyKey: studentKey },
-        create: {
-          enquiryId: data.enquiryId,
-          idempotencyKey: studentKey,
-          recipient: data.email,
-          subject: `Consultation Request Received - Reference: ${data.referenceNumber}`,
-          templateName: 'STUDENT_ACKNOWLEDGMENT',
-          payloadJson,
-          status: 'PENDING',
-        },
-        update: {},
-      });
-
-      // Immediately attempt dispatch (synchronously awaited to avoid unawaited serverless lambda race)
-      await OutboxDispatcher.dispatchOutboxRecord(adminOutbox.id);
-      await OutboxDispatcher.dispatchOutboxRecord(studentOutbox.id);
-      return;
-    } catch (err) {
-      console.error('[Outbox Dispatch Error]', (err as Error).message);
-    }
-  }
-
-  // Fallback direct dispatch (for test environments without live DB)
-  const adminSubject = `[Enquiry] ${data.referenceNumber} - ${data.studentName} (${data.department})`;
-  const adminHtml = renderAdminNotificationHtml(data);
-  await transportEmail(config.adminEmail, adminSubject, adminHtml);
-
-  const studentSubject = `Consultation Request Received - Reference: ${data.referenceNumber}`;
-  const studentHtml = renderStudentAcknowledgmentHtml(data);
-  await transportEmail(data.email, studentSubject, studentHtml);
 }

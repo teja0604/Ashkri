@@ -1,8 +1,9 @@
 /**
- * ASHKRI Academic Solutions — Server Environment Configuration
+ * ASHKRI Academic Solutions — Server Environment Configuration & Secrets Validation
  * 
  * Centralizes server-side configuration, ensures secrets are NEVER bundled into
- * client code, and provides strongly-typed fallbacks for development.
+ * client code, strictly rejects predictable fallbacks in production, and provides
+ * safe mock-isolated fallbacks exclusively for local development and test runners.
  */
 
 export interface StorageConfig {
@@ -41,13 +42,29 @@ export function isDatabaseConfigured(): boolean {
 
 export function getStorageConfig(): StorageConfig {
   const provider = (process.env.STORAGE_PROVIDER === 's3' ? 's3' : 'local') as 'local' | 's3';
+  const bucket = process.env.STORAGE_BUCKET || 'ashkri-enquiry-documents-private';
+  const region = process.env.STORAGE_REGION || 'ap-southeast-1';
+  const endpoint = process.env.STORAGE_ENDPOINT;
+  const accessKeyId = process.env.STORAGE_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.STORAGE_SECRET_ACCESS_KEY;
+
+  if (process.env.NODE_ENV === 'production' && !process.env.ALLOW_MOCKED_SUBMISSIONS) {
+    if (provider === 's3') {
+      if (!accessKeyId || !secretAccessKey) {
+        throw new Error(
+          'FATAL CONFIGURATION ERROR: S3 storage provider is configured in production, but STORAGE_ACCESS_KEY_ID or STORAGE_SECRET_ACCESS_KEY is missing.'
+        );
+      }
+    }
+  }
+
   return {
     provider,
-    bucket: process.env.STORAGE_BUCKET || 'ashkri-enquiry-documents-private',
-    region: process.env.STORAGE_REGION || 'ap-southeast-1',
-    endpoint: process.env.STORAGE_ENDPOINT,
-    accessKeyId: process.env.STORAGE_ACCESS_KEY_ID,
-    secretAccessKey: process.env.STORAGE_SECRET_ACCESS_KEY,
+    bucket,
+    region,
+    endpoint,
+    accessKeyId,
+    secretAccessKey,
   };
 }
 
@@ -74,6 +91,41 @@ export function getEmailConfig(): EmailConfig {
   };
 }
 
+/**
+ * Returns salt used for one-way IP hashing.
+ * In production, strictly requires a non-empty, cryptographically strong salt (>= 32 chars).
+ * Predictable fallbacks are forbidden outside explicit test/development environments.
+ */
 export function getRateLimitSalt(): string {
-  return process.env.RATE_LIMIT_SALT || 'ashkri-academic-solutions-default-salt-2026';
+  const salt = process.env.RATE_LIMIT_SALT;
+
+  if (process.env.NODE_ENV === 'production' && !process.env.ALLOW_MOCKED_SUBMISSIONS) {
+    if (!salt || salt.trim().length < 32) {
+      throw new Error(
+        'FATAL CONFIGURATION ERROR: RATE_LIMIT_SALT must be configured and contain at least 32 characters in production environments.'
+      );
+    }
+    return salt.trim();
+  }
+
+  // Development and test fallback
+  return salt || 'ashkri-dev-test-only-salt-min-32-chars-for-hash-calc';
+}
+
+/**
+ * Authenticated token secret for malware scanning write-back webhook.
+ */
+export function getScanWebhookSecret(): string {
+  const secret = process.env.SCAN_WEBHOOK_SECRET;
+
+  if (process.env.NODE_ENV === 'production' && !process.env.ALLOW_MOCKED_SUBMISSIONS) {
+    if (!secret || secret.trim().length < 32) {
+      throw new Error(
+        'FATAL CONFIGURATION ERROR: SCAN_WEBHOOK_SECRET must be configured and contain at least 32 characters in production environments.'
+      );
+    }
+    return secret.trim();
+  }
+
+  return secret || 'ashkri-dev-test-scan-webhook-secret-min-32-chars';
 }

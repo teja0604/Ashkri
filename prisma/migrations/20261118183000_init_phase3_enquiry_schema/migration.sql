@@ -5,7 +5,7 @@ CREATE TYPE "EnquiryStatus" AS ENUM ('NEW', 'CONTACTED', 'DISCUSSION_IN_PROGRESS
 CREATE TYPE "AttachmentScanStatus" AS ENUM ('CLEAN', 'QUARANTINED', 'PENDING_SCAN');
 
 -- CreateEnum
-CREATE TYPE "OutboxStatus" AS ENUM ('PENDING', 'DELIVERED', 'FAILED', 'DEAD_LETTER');
+CREATE TYPE "OutboxStatus" AS ENUM ('PENDING', 'PROCESSING', 'DELIVERED', 'FAILED', 'DEAD_LETTER');
 
 -- CreateTable
 CREATE TABLE "Enquiry" (
@@ -67,8 +67,10 @@ CREATE TABLE "EnquiryAttachment" (
     "mimeType" VARCHAR(100) NOT NULL,
     "sizeBytes" INTEGER NOT NULL,
     "checksum" VARCHAR(64) NOT NULL,
-    "scanStatus" "AttachmentScanStatus" NOT NULL DEFAULT 'CLEAN',
+    "scanStatus" "AttachmentScanStatus" NOT NULL DEFAULT 'PENDING_SCAN',
     "scanDetails" VARCHAR(255),
+    "scannerEngine" VARCHAR(100),
+    "scannedAt" TIMESTAMP(3),
     "uploadedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "EnquiryAttachment_pkey" PRIMARY KEY ("id")
@@ -101,6 +103,8 @@ CREATE TABLE "EmailOutbox" (
     "attempts" INTEGER NOT NULL DEFAULT 0,
     "maxAttempts" INTEGER NOT NULL DEFAULT 3,
     "nextRetryAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "lockedAt" TIMESTAMP(3),
+    "lockedBy" VARCHAR(100),
     "deliveredAt" TIMESTAMP(3),
     "errorReason" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -161,6 +165,9 @@ CREATE UNIQUE INDEX "EmailOutbox_idempotencyKey_key" ON "EmailOutbox"("idempoten
 
 -- CreateIndex
 CREATE INDEX "EmailOutbox_status_nextRetryAt_idx" ON "EmailOutbox"("status", "nextRetryAt");
+
+-- CreateIndex
+CREATE INDEX "EmailOutbox_status_lockedAt_idx" ON "EmailOutbox"("status", "lockedAt");
 
 -- CreateIndex
 CREATE INDEX "EmailOutbox_enquiryId_idx" ON "EmailOutbox"("enquiryId");

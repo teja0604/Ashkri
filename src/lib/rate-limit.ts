@@ -7,7 +7,7 @@ interface MemoryRateLimitRecord {
   resetAt: number;
 }
 
-// In-memory sliding window cache for rate limiting fallback and unit testing
+// In-memory sliding window cache for rate limiting — EXCLUSIVELY FOR UNIT TESTS AND LOCAL DEV
 const ipRateLimitStore = new Map<string, MemoryRateLimitRecord>();
 
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
@@ -39,11 +39,12 @@ export interface RateLimitResult {
   remaining: number;
   resetSeconds: number;
   error?: string;
+  failedClosed?: boolean;
 }
 
 /**
  * Synchronous in-memory rate limiting check.
- * Default: 5 requests per 15-minute window for public IPs; 100 for localhost / test suites.
+ * Used exclusively for local test suites and isolated mock runs.
  */
 export function checkRateLimit(
   ipHash: string,
@@ -89,8 +90,13 @@ export function checkRateLimit(
 
 /**
  * Distributed, atomic rate limiting mechanism backed by PostgreSQL RateLimitRecord.
- * In a multi-instance serverless environment (e.g. Vercel Lambdas), this guarantees
- * atomic counting and prevents bypassing limits via concurrent or distributed requests.
+ * 
+ * Strict Fail-Closed Semantics:
+ * In production, if PostgreSQL is unconfigured or unreachable, this function FAILS CLOSED.
+ * It NEVER silently falls back to an in-memory map in production (which would recreate
+ * multi-instance lambda bypasses).
+ * 
+ * In-memory fallback is strictly restricted to test execution suites (NODE_ENV === 'test' or ALLOW_MOCKED_SUBMISSIONS === 'true').
  */
 export async function checkDistributedRateLimit(
   ipHash: string,
@@ -98,6 +104,9 @@ export async function checkDistributedRateLimit(
   windowMs: number = 15 * 60 * 1000,
   isLocalhost: boolean = false
 ): Promise<RateLimitResult> {
+  const isTestOrMockEnv =
+    process.env.NODE_ENV === 'test' || process.env.ALLOW_MOCKED_SUBMISSIONS === 'true';
+
   const effectiveLimit = isLocalhost ? 100 : limit;
   const now = new Date();
   const resetDate = new Date(now.getTime() + windowMs);
@@ -143,11 +152,33 @@ export async function checkDistributedRateLimit(
         };
       }
     } catch (err) {
-      console.error('[RateLimit DB Error - Falling back to local store]', (err as Error).message);
+      console.error('[RateLimit DB Failure]', (err as Error).message);
+
+      // In production: Fail Closed. Never bypass distributed protection.
+      if (!isTestOrMockEnv) {
+        return {
+          success: false,
+          remaining: 0,
+          resetSeconds: 60,
+          error: 'Rate limiting service is currently unavailable. Please try again shortly.',
+          failedClosed: true,
+        };
+      }
+    }
+  } else {
+    // Database unconfigured
+    if (!isTestOrMockEnv) {
+      return {
+        success: false,
+        remaining: 0,
+        resetSeconds: 60,
+        error: 'Distributed rate limiting service is unconfigured. Submission rejected for security.',
+        failedClosed: true,
+      };
     }
   }
 
-  // Fallback to local memory store when database is not configured or during testing
+  // Allowed exclusively in test and mock environments
   return checkRateLimit(ipHash, limit, windowMs, isLocalhost);
 }
 

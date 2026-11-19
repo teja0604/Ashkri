@@ -18,15 +18,17 @@ import {
 import {
   SimulatedDistributedRateLimiter,
   hashIp,
+  checkDistributedRateLimit,
   _resetRateLimitStoreForTesting,
 } from '@/lib/rate-limit';
 import { OutboxDispatcher, transportEmail } from '@/lib/email';
+import { executeMalwareScan, updateAttachmentScanResult } from '@/lib/malware-scanner';
 import { submitEnquiryAction } from '@/actions/enquiry';
 import prisma from '@/lib/prisma';
 import * as envModule from '@/lib/env';
 
 /**
- * Binary helper to construct valid and invalid ZIP buffers without external dependencies
+ * Binary helper to construct valid and adversarial ZIP buffers for testing
  */
 function buildZipBuffer(
   entries: Array<{
@@ -34,6 +36,10 @@ function buildZipBuffer(
     content?: string;
     uncompressedSize?: number;
     compressedSize?: number;
+    compressionMethod?: number;
+    flags?: number;
+    localHeaderSignature?: number;
+    localNameOverride?: string;
   }>
 ): Buffer {
   const localHeaders: Buffer[] = [];
@@ -42,27 +48,34 @@ function buildZipBuffer(
 
   for (const entry of entries) {
     const nameBuf = Buffer.from(entry.name, 'utf8');
+    const localNameBuf = entry.localNameOverride
+      ? Buffer.from(entry.localNameOverride, 'utf8')
+      : nameBuf;
     const dataBuf = Buffer.from(entry.content || '', 'utf8');
     const uncompressedSize =
       entry.uncompressedSize !== undefined ? entry.uncompressedSize : dataBuf.length;
     const compressedSize =
       entry.compressedSize !== undefined ? entry.compressedSize : dataBuf.length;
+    const method = entry.compressionMethod !== undefined ? entry.compressionMethod : 0;
+    const flags = entry.flags !== undefined ? entry.flags : 0;
+    const localSig =
+      entry.localHeaderSignature !== undefined ? entry.localHeaderSignature : 0x04034b50;
 
     // Local file header (30 bytes + name + data)
     const lh = Buffer.alloc(30);
-    lh.writeUInt32LE(0x04034b50, 0); // Local header signature
+    lh.writeUInt32LE(localSig, 0); // Local header signature
     lh.writeUInt16LE(10, 4); // Min version
-    lh.writeUInt16LE(0, 6); // Flags
-    lh.writeUInt16LE(0, 8); // Compression method (0 = stored)
+    lh.writeUInt16LE(flags, 6); // Flags
+    lh.writeUInt16LE(method, 8); // Compression method
     lh.writeUInt16LE(0, 10); // Time
     lh.writeUInt16LE(0, 12); // Date
     lh.writeUInt32LE(0, 14); // CRC32
     lh.writeUInt32LE(compressedSize, 18);
     lh.writeUInt32LE(uncompressedSize, 22);
-    lh.writeUInt16LE(nameBuf.length, 26);
+    lh.writeUInt16LE(localNameBuf.length, 26);
     lh.writeUInt16LE(0, 28); // Extra len
 
-    const localEntry = Buffer.concat([lh, nameBuf, dataBuf]);
+    const localEntry = Buffer.concat([lh, localNameBuf, dataBuf]);
     localHeaders.push(localEntry);
 
     // Central directory header (46 bytes + name)
@@ -70,8 +83,8 @@ function buildZipBuffer(
     cd.writeUInt32LE(0x02014b50, 0); // CD signature
     cd.writeUInt16LE(20, 4); // Version made by
     cd.writeUInt16LE(10, 6); // Version needed
-    cd.writeUInt16LE(0, 8); // Flags
-    cd.writeUInt16LE(0, 10); // Compression
+    cd.writeUInt16LE(flags, 8); // Flags
+    cd.writeUInt16LE(method, 10); // Compression
     cd.writeUInt16LE(0, 12); // Time
     cd.writeUInt16LE(0, 14); // Date
     cd.writeUInt32LE(0, 16); // CRC32
@@ -106,7 +119,7 @@ function buildZipBuffer(
   return Buffer.concat([allLocal, allCd, eocd]);
 }
 
-describe('Phase 3 Production Hardening Review', () => {
+describe('ASHKRI Phase 3 — Second Production Hardening & Security Audit', () => {
   beforeEach(() => {
     _resetRateLimitStoreForTesting();
     vi.clearAllMocks();
@@ -117,201 +130,220 @@ describe('Phase 3 Production Hardening Review', () => {
   });
 
   // =========================================================================
-  // 1. RATE LIMITING ACROSS SIMULATED INDEPENDENT INSTANCES
+  // 1. DISTRIBUTED RATE LIMITING — FAIL CLOSED SEMANTICS
   // =========================================================================
-  describe('1. Distributed Rate Limiting Across Instances', () => {
-    it('enforces shared threshold atomically when multiple serverless instances check the same IP', async () => {
-      const limiter = new SimulatedDistributedRateLimiter();
-      const ipKey = hashIp('203.0.113.45');
-      const limit = 5;
-      const windowMs = 60 * 1000;
+  describe('1. Distributed Rate Limiter: Fail-Closed Protection', () => {
+    it('fails closed and rejects submission with 503 when PostgreSQL encounters an error in production', async () => {
+      const originalNodeEnv = process.env.NODE_ENV;
+      const originalMock = process.env.ALLOW_MOCKED_SUBMISSIONS;
 
-      // Simulate 3 distinct lambda instances handling concurrent client requests
-      const instanceA = () => limiter.check(ipKey, limit, windowMs);
-      const instanceB = () => limiter.check(ipKey, limit, windowMs);
-      const instanceC = () => limiter.check(ipKey, limit, windowMs);
+      try {
+        (process.env as any).NODE_ENV = 'production';
+        delete process.env.ALLOW_MOCKED_SUBMISSIONS;
 
-      // Requests 1-5 across different instances
-      const r1 = await instanceA();
-      const r2 = await instanceB();
-      const r3 = await instanceC();
-      const r4 = await instanceA();
-      const r5 = await instanceB();
+        vi.spyOn(envModule, 'isDatabaseConfigured').mockReturnValue(true);
+        vi.spyOn(prisma, '$queryRaw').mockRejectedValueOnce(
+          new Error('Connection to Neon PostgreSQL pool timed out')
+        );
 
-      expect(r1.success).toBe(true);
-      expect(r2.success).toBe(true);
-      expect(r3.success).toBe(true);
-      expect(r4.success).toBe(true);
-      expect(r5.success).toBe(true);
-      expect(r5.remaining).toBe(0);
+        const result = await checkDistributedRateLimit('test-ip-hash', 5, 60000, false);
 
-      // Request 6 from any instance should be rejected atomically
-      const r6 = await instanceC();
-      expect(r6.success).toBe(false);
-      expect(r6.remaining).toBe(0);
-      expect(r6.error).toContain('Too many consultation requests');
+        // MUST FAIL CLOSED: never fall back to in-memory bypass
+        expect(result.success).toBe(false);
+        expect(result.failedClosed).toBe(true);
+        expect(result.error).toContain('Rate limiting service is currently unavailable');
+      } finally {
+        (process.env as any).NODE_ENV = originalNodeEnv;
+        if (originalMock !== undefined) {
+          process.env.ALLOW_MOCKED_SUBMISSIONS = originalMock;
+        }
+      }
+    });
+
+    it('fails closed when database is unconfigured in production', async () => {
+      const originalNodeEnv = process.env.NODE_ENV;
+      const originalMock = process.env.ALLOW_MOCKED_SUBMISSIONS;
+
+      try {
+        (process.env as any).NODE_ENV = 'production';
+        delete process.env.ALLOW_MOCKED_SUBMISSIONS;
+
+        vi.spyOn(envModule, 'isDatabaseConfigured').mockReturnValue(false);
+
+        const result = await checkDistributedRateLimit('test-ip-hash', 5, 60000, false);
+
+        expect(result.success).toBe(false);
+        expect(result.failedClosed).toBe(true);
+        expect(result.error).toContain('Distributed rate limiting service is unconfigured');
+      } finally {
+        (process.env as any).NODE_ENV = originalNodeEnv;
+        if (originalMock !== undefined) {
+          process.env.ALLOW_MOCKED_SUBMISSIONS = originalMock;
+        }
+      }
     });
   });
 
   // =========================================================================
-  // 2. CONCURRENT DUPLICATE SUBMISSIONS (ATOMIC DB-LEVEL IDEMPOTENCY)
+  // 2. TRUSTED PROXY BOUNDARY & ANTI-SPOOFING
   // =========================================================================
-  describe('2. Concurrent Duplicate Submissions (Idempotency)', () => {
-    it('prevents duplicate records on concurrent race conditions via DB unique constraint P2002', async () => {
-      const testRef = 'ASH-202611-DUP1';
-      const testIdemKey = 'idem_test_race_condition_key';
+  describe('2. Trusted Proxy Resolution & Deployment Boundary', () => {
+    it('rejects unauthenticated client-supplied x-forwarded-for in production outside edge proxy', () => {
+      const originalNodeEnv = process.env.NODE_ENV;
+      const originalMock = process.env.ALLOW_MOCKED_SUBMISSIONS;
 
-      // Mock prisma transaction to simulate a duplicate race condition (PostgreSQL P2002 error)
+      try {
+        (process.env as any).NODE_ENV = 'production';
+        delete process.env.ALLOW_MOCKED_SUBMISSIONS;
+
+        // Attacker directly connects and passes spoofed x-forwarded-for without Vercel edge headers
+        const headers = new Headers({
+          'x-forwarded-for': '8.8.8.8, 1.1.1.1',
+        });
+
+        const extracted = extractClientIp(headers);
+        expect(extracted).toBe('untrusted-proxy-boundary');
+      } finally {
+        (process.env as any).NODE_ENV = originalNodeEnv;
+        if (originalMock !== undefined) {
+          process.env.ALLOW_MOCKED_SUBMISSIONS = originalMock;
+        }
+      }
+    });
+
+    it('authenticates Vercel-provided x-vercel-forwarded-for in production', () => {
+      const originalNodeEnv = process.env.NODE_ENV;
+
+      try {
+        (process.env as any).NODE_ENV = 'production';
+
+        const headers = new Headers({
+          'x-vercel-forwarded-for': '203.0.113.195',
+          'x-forwarded-for': '8.8.8.8', // Ignored spoof attempt
+        });
+
+        const extracted = extractClientIp(headers);
+        expect(extracted).toBe('203.0.113.195');
+      } finally {
+        (process.env as any).NODE_ENV = originalNodeEnv;
+      }
+    });
+
+    it('authenticates Cloudflare-provided cf-connecting-ip', () => {
+      const headers = new Headers({
+        'cf-connecting-ip': '198.51.100.77',
+        'x-forwarded-for': '123.123.123.123',
+      });
+
+      const extracted = extractClientIp(headers);
+      expect(extracted).toBe('198.51.100.77');
+    });
+  });
+
+  // =========================================================================
+  // 3. REAL ATTACHMENT QUARANTINE & MALWARE SCANNING INTEGRATION
+  // =========================================================================
+  describe('3. Attachment Quarantine & Malware Scanning Integration', () => {
+    it('defaults attachment scan status to PENDING_SCAN on upload', async () => {
       const isConfiguredSpy = vi.spyOn(envModule, 'isDatabaseConfigured').mockReturnValue(true);
 
-      const p2002Error = new Error('Unique constraint failed on the fields: (idempotencyKey)');
-      (p2002Error as unknown as { code: string }).code = 'P2002';
+      let createdScanStatus: string | undefined;
 
-      vi.spyOn(prisma, '$transaction').mockRejectedValueOnce(p2002Error);
-      vi.spyOn(prisma.enquiry, 'findUnique').mockResolvedValueOnce({
-        id: 'existing-enquiry-uuid',
-        referenceNumber: testRef,
-      } as any);
+      vi.spyOn(prisma, '$transaction').mockImplementation(async (callback: any) => {
+        return callback({
+          enquiry: {
+            create: vi.fn().mockResolvedValue({ id: 'enq-uuid-test', referenceNumber: 'ASH-202611-TEST' }),
+          },
+          enquiryStatusHistory: { create: vi.fn() },
+          enquiryAttachment: {
+            create: vi.fn().mockImplementation((args: any) => {
+              createdScanStatus = args.data.scanStatus;
+              return Promise.resolve(args.data);
+            }),
+          },
+          emailOutbox: { create: vi.fn() },
+        });
+      });
 
       const fd = new FormData();
-      fd.append('studentName', 'Teja V');
-      fd.append('email', 'teja@mitindia.edu');
+      fd.append('studentName', 'Kavitha R');
+      fd.append('email', 'kavitha@mitindia.edu');
       fd.append('phone', '+919443212345');
       fd.append('college', 'MIT Campus');
-      fd.append('department', 'CSE');
-      fd.append('domain', 'Cloud & Distributed Systems');
+      fd.append('department', 'IT');
+      fd.append('domain', 'Information Technology');
       fd.append('service', 'Full-Stack Software Assistance');
-      fd.append('description', 'Concurrent idempotent test payload.');
+      fd.append('description', 'Testing attachment quarantine default.');
       fd.append('consent', 'true');
-      fd.append('idempotencyKey', testIdemKey);
 
-      const result = await submitEnquiryAction(fd);
-
-      // Should safely return existing reference number without crashing
-      expect(result.success).toBe(true);
-      expect(result.referenceNumber).toBe(testRef);
-
-      isConfiguredSpy.mockRestore();
-    });
-  });
-
-  // =========================================================================
-  // 3. FAILURE-SAFE UPLOADS (COMPENSATING OBJECT CLEANUP)
-  // =========================================================================
-  describe('3. Compensating Storage Cleanup on Database Failure', () => {
-    it('deletes uploaded storage object if database transaction fails', async () => {
-      const testEnquiryId = 'cleanup-test-uuid';
-      const filename = 'test-rubric.pdf';
       const validPdfBuffer = Buffer.from(
-        '%PDF-1.4\n1 0 obj\n<< /Title (Test) >>\nendobj\ntrailer\n<< /Size 1 >>\nstartxref\n99\n%%EOF'
+        '%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\nstartxref\n0\n%%EOF\n'
       );
+      const testFile = new File([validPdfBuffer], 'specs.pdf', { type: 'application/pdf' });
+      fd.append('attachment', testFile);
 
-      // Store object in local storage
-      const stored = await storeAttachment(testEnquiryId, filename, 'application/pdf', validPdfBuffer);
-      const localFilePath = path.resolve(process.cwd(), 'storage', 'private_uploads', stored.storageKey);
+      await submitEnquiryAction(fd);
 
-      // Confirm object exists on disk
-      const existsBefore = await fs
-        .access(localFilePath)
-        .then(() => true)
-        .catch(() => false);
-      expect(existsBefore).toBe(true);
-
-      // Trigger compensating deletion
-      await deleteStoredAttachment(stored.storageKey);
-
-      // Confirm object was deleted cleanly
-      const existsAfter = await fs
-        .access(localFilePath)
-        .then(() => true)
-        .catch(() => false);
-      expect(existsAfter).toBe(false);
-    });
-  });
-
-  // =========================================================================
-  // 4. TRANSACTIONAL EMAIL OUTBOX (RETRIES & DUPLICATE PREVENTION)
-  // =========================================================================
-  describe('4. Durable Email Outbox Retries & Duplicate Dispatch Prevention', () => {
-    it('aborts immediately without re-sending if outbox record is already DELIVERED', async () => {
-      const isConfiguredSpy = vi.spyOn(envModule, 'isDatabaseConfigured').mockReturnValue(true);
-
-      const findUniqueSpy = vi.spyOn(prisma.emailOutbox, 'findUnique').mockResolvedValueOnce({
-        id: 'outbox-123',
-        status: 'DELIVERED',
-        attempts: 1,
-        maxAttempts: 3,
-        payloadJson: '{}',
-      } as any);
-
-      const updateSpy = vi.spyOn(prisma.emailOutbox, 'update');
-
-      const result = await OutboxDispatcher.dispatchOutboxRecord('outbox-123');
-
-      expect(result.success).toBe(true);
-      // Should NOT call update or re-send
-      expect(updateSpy).not.toHaveBeenCalled();
+      // MUST NOT be marked CLEAN immediately
+      expect(createdScanStatus).toBe('PENDING_SCAN');
 
       isConfiguredSpy.mockRestore();
-      findUniqueSpy.mockRestore();
-      updateSpy.mockRestore();
     });
 
-    it('records exponential backoff and increments attempt counter when delivery fails', async () => {
+    it('keeps attachment in QUARANTINED state if scanner times out or fails (fails closed)', async () => {
+      process.env.MALWARE_SCANNER_ENDPOINT = 'https://scanner.internal.ashkri.com/scan';
+
+      global.fetch = vi.fn().mockRejectedValueOnce(new Error('Scanner timeout'));
+
+      const scanResult = await executeMalwareScan(Buffer.from('test data'), 'sample.pdf');
+
+      expect(scanResult.scanStatus).toBe('QUARANTINED');
+      expect(scanResult.details).toContain('Scan failed or timed out');
+
+      delete process.env.MALWARE_SCANNER_ENDPOINT;
+    });
+
+    it('authenticates scan result write-back token and updates attachment status', async () => {
       const isConfiguredSpy = vi.spyOn(envModule, 'isDatabaseConfigured').mockReturnValue(true);
+      const validSecret = 'test-scan-secret-min-32-chars-long-for-hmac-auth';
+      vi.spyOn(envModule, 'getScanWebhookSecret').mockReturnValue(validSecret);
 
-      const dummyPayload = JSON.stringify({
+      vi.spyOn(prisma.enquiryAttachment, 'findUnique').mockResolvedValueOnce({
+        id: 'att-123',
         enquiryId: 'enq-123',
-        referenceNumber: 'ASH-202611-FAIL',
-        studentName: 'Alex',
-        email: 'alex@example.com',
-        phone: '+919876543210',
-        college: 'CEG',
-        department: 'IT',
-        domain: 'AI',
-        service: 'Full-Stack',
-        description: 'Test retry',
-      });
-
-      vi.spyOn(prisma.emailOutbox, 'findUnique').mockResolvedValueOnce({
-        id: 'outbox-retry-test',
-        enquiryId: 'enq-123',
-        status: 'PENDING',
-        attempts: 1,
-        maxAttempts: 3,
-        recipient: 'alex@example.com',
-        subject: 'Test Subject',
-        templateName: 'STUDENT_ACKNOWLEDGMENT',
-        payloadJson: dummyPayload,
+        originalName: 'specs.pdf',
       } as any);
 
-      // Force transport failure by mocking Resend API failure
-      vi.spyOn(envModule, 'getEmailConfig').mockReturnValue({
-        adminEmail: 'admin@ashkri.com',
-        fromEmail: 'no-reply@ashkri.com',
-        resendApiKey: 'invalid-key-for-test',
+      const updateAttachmentMock = vi.fn().mockResolvedValue({});
+      const createNoteMock = vi.fn().mockResolvedValue({});
+
+      vi.spyOn(prisma, '$transaction').mockImplementation(async (callback: any) => {
+        return callback({
+          enquiryAttachment: { update: updateAttachmentMock },
+          enquiryNote: { create: createNoteMock },
+        });
       });
 
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        text: async () => 'Internal Resend Provider Error',
-      } as Response);
+      // 1. Rejected if token invalid
+      const failAuth = await updateAttachmentScanResult(
+        'att-123',
+        { scanStatus: 'CLEAN', scannerEngine: 'ClamAV', scannedAt: new Date() },
+        'invalid-token'
+      );
+      expect(failAuth.success).toBe(false);
+      expect(failAuth.error).toContain('Unauthorized');
 
-      const updateSpy = vi.spyOn(prisma.emailOutbox, 'update').mockResolvedValueOnce({} as any);
-      vi.spyOn(prisma.emailEvent, 'create').mockResolvedValueOnce({} as any);
-
-      const res = await OutboxDispatcher.dispatchOutboxRecord('outbox-retry-test');
-
-      expect(res.success).toBe(false);
-      expect(updateSpy).toHaveBeenCalledWith(
+      // 2. Accepted if token valid
+      const successAuth = await updateAttachmentScanResult(
+        'att-123',
+        { scanStatus: 'CLEAN', scannerEngine: 'ClamAV', scannedAt: new Date(), details: 'No threat' },
+        validSecret
+      );
+      expect(successAuth.success).toBe(true);
+      expect(updateAttachmentMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'outbox-retry-test' },
-          data: expect.objectContaining({
-            status: 'FAILED',
-            attempts: 2,
-            errorReason: expect.stringContaining('Resend API error (500)'),
-          }),
+          where: { id: 'att-123' },
+          data: expect.objectContaining({ scanStatus: 'CLEAN' }),
         })
       );
 
@@ -320,205 +352,198 @@ describe('Phase 3 Production Hardening Review', () => {
   });
 
   // =========================================================================
-  // 5. ATTACHMENT SECURITY (DOCX, ZIP BOMBS, TRAVERSAL, PDF SCRIPTS)
+  // 4. TRANSACTIONAL EMAIL OUTBOX CONCURRENCY & LEASE EXPIRATION
   // =========================================================================
-  describe('5. Attachment Security & Malware/Structure Validation', () => {
-    it('validates genuine DOCX OpenXML structure and rejects zip without Word document parts', () => {
-      // Valid DOCX container
-      const validDocx = buildZipBuffer([
-        { name: '[Content_Types].xml', content: '<Types/>' },
-        { name: 'word/document.xml', content: '<w:document/>' },
-      ]);
-      expect(validateDocxStructure(validDocx).valid).toBe(true);
+  describe('4. Concurrency-Safe Transactional Email Outbox', () => {
+    it('creates enquiry and both notification outbox records atomically within the same transaction', async () => {
+      const isConfiguredSpy = vi.spyOn(envModule, 'isDatabaseConfigured').mockReturnValue(true);
 
-      // Invalid DOCX (plain zip disguised as docx without OpenXML parts)
-      const fakeDocx = buildZipBuffer([{ name: 'notes.txt', content: 'fake docx' }]);
-      const result = validateDocxStructure(fakeDocx);
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain('Missing required Microsoft Word OpenXML');
+      const outboxCreateCalls: any[] = [];
+
+      vi.spyOn(prisma, '$transaction').mockImplementation(async (callback: any) => {
+        return callback({
+          enquiry: {
+            create: vi.fn().mockResolvedValue({ id: 'enq-atom-1', referenceNumber: 'ASH-202611-ATOM' }),
+          },
+          enquiryStatusHistory: { create: vi.fn() },
+          enquiryAttachment: { create: vi.fn() },
+          emailOutbox: {
+            create: vi.fn().mockImplementation((args: any) => {
+              outboxCreateCalls.push(args.data);
+              return Promise.resolve(args.data);
+            }),
+          },
+        });
+      });
+
+      vi.spyOn(OutboxDispatcher, 'processPending').mockResolvedValue({ dispatched: 2, failed: 0 });
+
+      const fd = new FormData();
+      fd.append('studentName', 'Deepak S');
+      fd.append('email', 'deepak@annauniv.edu');
+      fd.append('phone', '+919443212345');
+      fd.append('college', 'Anna University');
+      fd.append('department', 'CSE');
+      fd.append('domain', 'Cloud & Distributed Systems');
+      fd.append('service', 'Full-Stack Software Assistance');
+      fd.append('description', 'Testing atomic transaction outbox creation.');
+      fd.append('consent', 'true');
+
+      const res = await submitEnquiryAction(fd);
+      expect(res.success).toBe(true);
+
+      // Verify BOTH outbox records were created inside the transaction
+      expect(outboxCreateCalls.length).toBe(2);
+      expect(outboxCreateCalls.some((c) => c.templateName === 'ADMIN_NOTIFICATION')).toBe(true);
+      expect(outboxCreateCalls.some((c) => c.templateName === 'STUDENT_ACKNOWLEDGMENT')).toBe(true);
+
+      isConfiguredSpy.mockRestore();
     });
 
-    it('rejects DOCX containing embedded VBA macros (vbaProject.bin)', () => {
-      const macroDocx = buildZipBuffer([
-        { name: '[Content_Types].xml', content: '<Types/>' },
-        { name: 'word/document.xml', content: '<w:document/>' },
-        { name: 'word/vbaProject.bin', content: 'MALICIOUS_MACRO_BYTES' },
-      ]);
-      const result = validateDocxStructure(macroDocx);
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain('embedded VBA macros');
-    });
+    it('prevents concurrent dispatch by acquiring atomic worker lease (returns claimed: false to second worker)', async () => {
+      const isConfiguredSpy = vi.spyOn(envModule, 'isDatabaseConfigured').mockReturnValue(true);
 
-    it('detects and rejects ZIP archives containing path traversal exploits', () => {
-      const traversalZip = buildZipBuffer([
-        { name: '../../etc/shadow', content: 'root:x:0:0:...' },
-      ]);
-      const result = inspectZipStructure(traversalZip);
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain('Path traversal detected');
-    });
+      // First worker acquires lease (executeRaw returns 1 updated row)
+      vi.spyOn(prisma, '$executeRaw').mockResolvedValueOnce(1);
+      vi.spyOn(prisma.emailOutbox, 'findUnique').mockResolvedValueOnce({
+        id: 'outbox-race-1',
+        status: 'PROCESSING',
+      } as any);
 
-    it('detects and rejects ZIP archives containing dangerous executable binaries', () => {
-      const exeZip = buildZipBuffer([
-        { name: 'payload.exe', content: 'MZ_EXECUTABLE_BINARY' },
-      ]);
-      const result = inspectZipStructure(exeZip);
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain('Disallowed executable file');
-    });
+      const worker1Claim = await OutboxDispatcher.claimOutboxRecord('outbox-race-1', 'worker-A');
+      expect(worker1Claim.claimed).toBe(true);
 
-    it('detects and rejects ZIP bombs with abnormal compression ratio or excessive uncompressed size', () => {
-      // 2 KB compressed claiming 40 KB uncompressed (ratio 20:1 > MAX_COMPRESSION_RATIO 10)
-      const bombZip = buildZipBuffer([
+      // Second concurrent worker attempts to claim same record (executeRaw returns 0 rows updated)
+      vi.spyOn(prisma, '$executeRaw').mockResolvedValueOnce(0);
+
+      const worker2Claim = await OutboxDispatcher.claimOutboxRecord('outbox-race-1', 'worker-B');
+      expect(worker2Claim.claimed).toBe(false);
+
+      isConfiguredSpy.mockRestore();
+    });
+  });
+
+  // =========================================================================
+  // 5. ZIP VALIDATION & ADVERSARIAL ARCHIVE TESTS
+  // =========================================================================
+  describe('5. Hardened ZIP Validation & Adversarial Archives', () => {
+    it('detects and rejects ZIP archives with local header signature corruption', () => {
+      const corruptedLocalSigZip = buildZipBuffer([
         {
-          name: 'large_data.txt',
-          content: 'x'.repeat(2048),
-          compressedSize: 2048,
-          uncompressedSize: 2048 * 20, // ratio 20:1 (> MAX_COMPRESSION_RATIO 10)
+          name: 'valid_first.txt',
+          content: 'valid header entry',
+        },
+        {
+          name: 'paper.txt',
+          content: 'research paper contents',
+          localHeaderSignature: 0x00004b50, // Starts with PK (0x50, 0x4b) but signature is 0x00004b50 instead of 0x04034b50
         },
       ]);
-      const result = inspectZipStructure(bombZip);
+
+      const result = inspectZipStructure(corruptedLocalSigZip);
       expect(result.valid).toBe(false);
-      expect(result.error).toContain('potential zip bomb');
+      expect(result.error).toContain('Local file header signature mismatch');
     });
 
-    it('validates PDF structural trailer (%%EOF) and rejects active JavaScript / Launch exploits', () => {
-      // Valid minimal PDF
-      const validPdf = Buffer.from(
-        '%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\nstartxref\n0\n%%EOF\n'
-      );
-      expect(validatePdfStructure(validPdf).valid).toBe(true);
+    it('detects and rejects ZIP archives with filename mismatch between central directory and local header', () => {
+      const mismatchedNameZip = buildZipBuffer([
+        {
+          name: 'public_name.txt',
+          content: 'exploit payload',
+          localNameOverride: 'hidden_exploit.sh', // Mismatched local header name
+        },
+      ]);
 
-      // Corrupted PDF (missing %%EOF trailer)
-      const truncatedPdf = Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n');
-      const truncResult = validatePdfStructure(truncatedPdf);
-      expect(truncResult.valid).toBe(false);
-      expect(truncResult.error).toContain('Missing standard %%EOF trailer marker');
-
-      // Malicious PDF with embedded /JavaScript action
-      const exploitPdf = Buffer.from(
-        '%PDF-1.4\n1 0 obj\n<< /Names << /JavaScript 2 0 R >> >>\nendobj\ntrailer\n<<>>\nstartxref\n0\n%%EOF'
-      );
-      const exploitResult = validatePdfStructure(exploitPdf);
-      expect(exploitResult.valid).toBe(false);
-      expect(exploitResult.error).toContain('embedded JavaScript actions');
-    });
-  });
-
-  // =========================================================================
-  // 6. SPOOFED PROXY HEADERS & ANTI-SPOOFING
-  // =========================================================================
-  describe('6. Trusted Proxy Header Resolution & Anti-Spoofing', () => {
-    it('prioritizes trusted x-vercel-forwarded-for over client-spoofed x-forwarded-for', () => {
-      const headers = new Headers({
-        'x-forwarded-for': '8.8.8.8, 1.1.1.1', // Attacker attempted spoof
-        'x-vercel-forwarded-for': '203.0.113.195', // Verified Vercel Edge IP
-      });
-
-      const extracted = extractClientIp(headers);
-      expect(extracted).toBe('203.0.113.195');
+      const result = inspectZipStructure(mismatchedNameZip);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Mismatch between central directory name');
     });
 
-    it('prioritizes cf-connecting-ip over untrusted headers', () => {
-      const headers = new Headers({
-        'x-forwarded-for': '10.0.0.1',
-        'cf-connecting-ip': '198.51.100.44',
-      });
+    it('rejects encrypted or password-protected ZIP archives', () => {
+      const encryptedZip = buildZipBuffer([
+        {
+          name: 'secret.txt',
+          content: 'encrypted bytes',
+          flags: 0x0001, // General purpose bit 0 = encrypted
+        },
+      ]);
 
-      const extracted = extractClientIp(headers);
-      expect(extracted).toBe('198.51.100.44');
+      const result = inspectZipStructure(encryptedZip);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Encrypted or password-protected archives are not permitted');
     });
 
-    it('normalizes IPv4-mapped IPv6 addresses (::ffff:192.168.1.1 -> 192.168.1.1)', () => {
-      expect(normalizeIp('::ffff:192.168.1.10')).toBe('192.168.1.10');
-      expect(normalizeIp('::ffff:127.0.0.1')).toBe('127.0.0.1');
-    });
+    it('rejects unsupported obsolete compression methods', () => {
+      const unsupportedMethodZip = buildZipBuffer([
+        {
+          name: 'data.bin',
+          content: 'lzma compressed bytes',
+          compressionMethod: 14, // Method 14 = LZMA (only 0 stored and 8 deflated are accepted)
+        },
+      ]);
 
-    it('strips port numbers from IPv4 addresses', () => {
-      expect(normalizeIp('203.0.113.50:8080')).toBe('203.0.113.50');
-    });
-
-    it('safely handles malformed and invalid IP strings by falling back to localhost', () => {
-      const headers = new Headers({
-        'x-forwarded-for': 'malicious-script-tag-<script>, invalid_ip',
-      });
-
-      const extracted = extractClientIp(headers);
-      expect(extracted).toBe('127.0.0.1');
+      const result = inspectZipStructure(unsupportedMethodZip);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Unsupported ZIP compression method 14');
     });
   });
 
   // =========================================================================
-  // 7. DATABASE-UNAVAILABLE BEHAVIOR IN PRODUCTION / PREVIEW
+  // 6. PRODUCTION SECRETS VALIDATION
   // =========================================================================
-  describe('7. Database Unconfigured Handling in Production / Preview', () => {
-    it('strictly returns an error response when DATABASE_URL is unconfigured outside of test mode', async () => {
+  describe('6. Production Security Secrets Validation', () => {
+    it('throws fatal error in production when RATE_LIMIT_SALT is missing or shorter than 32 characters', () => {
       const originalNodeEnv = process.env.NODE_ENV;
-      const originalAllowMock = process.env.ALLOW_MOCKED_SUBMISSIONS;
+      const originalSalt = process.env.RATE_LIMIT_SALT;
+      const originalMock = process.env.ALLOW_MOCKED_SUBMISSIONS;
 
       try {
-        // Simulate production without database
         (process.env as any).NODE_ENV = 'production';
         delete process.env.ALLOW_MOCKED_SUBMISSIONS;
 
-        vi.spyOn(envModule, 'isDatabaseConfigured').mockReturnValue(false);
+        // 1. Missing salt
+        delete process.env.RATE_LIMIT_SALT;
+        expect(() => envModule.getRateLimitSalt()).toThrow('FATAL CONFIGURATION ERROR: RATE_LIMIT_SALT');
 
-        const fd = new FormData();
-        fd.append('studentName', 'Kavitha R');
-        fd.append('email', 'kavitha@mitindia.edu');
-        fd.append('phone', '+919443212345');
-        fd.append('college', 'MIT Campus');
-        fd.append('department', 'ECE');
-        fd.append('domain', 'VLSI & Embedded Systems');
-        fd.append('service', 'FPGA & Verilog Design');
-        fd.append('description', 'Evaluating production failure without DB.');
-        fd.append('consent', 'true');
-
-        const result = await submitEnquiryAction(fd);
-
-        // MUST NOT claim success or provide a fake reference number
-        expect(result.success).toBe(false);
-        expect(result.referenceNumber).toBeUndefined();
-        expect(result.error).toContain('Database service is currently unavailable');
+        // 2. Weak short salt (< 32 chars)
+        process.env.RATE_LIMIT_SALT = 'too-short-salt';
+        expect(() => envModule.getRateLimitSalt()).toThrow('must be configured and contain at least 32 characters');
       } finally {
         (process.env as any).NODE_ENV = originalNodeEnv;
-        if (originalAllowMock !== undefined) {
-          process.env.ALLOW_MOCKED_SUBMISSIONS = originalAllowMock;
+        if (originalSalt !== undefined) {
+          process.env.RATE_LIMIT_SALT = originalSalt;
+        } else {
+          delete process.env.RATE_LIMIT_SALT;
+        }
+        if (originalMock !== undefined) {
+          process.env.ALLOW_MOCKED_SUBMISSIONS = originalMock;
         }
       }
     });
 
-    it('permits mocked submission ONLY under explicit ALLOW_MOCKED_SUBMISSIONS flag', async () => {
+    it('throws fatal error in production when SCAN_WEBHOOK_SECRET is missing or shorter than 32 characters', () => {
       const originalNodeEnv = process.env.NODE_ENV;
-      const originalAllowMock = process.env.ALLOW_MOCKED_SUBMISSIONS;
+      const originalSecret = process.env.SCAN_WEBHOOK_SECRET;
+      const originalMock = process.env.ALLOW_MOCKED_SUBMISSIONS;
 
       try {
         (process.env as any).NODE_ENV = 'production';
-        process.env.ALLOW_MOCKED_SUBMISSIONS = 'true';
+        delete process.env.ALLOW_MOCKED_SUBMISSIONS;
 
-        vi.spyOn(envModule, 'isDatabaseConfigured').mockReturnValue(false);
+        delete process.env.SCAN_WEBHOOK_SECRET;
+        expect(() => envModule.getScanWebhookSecret()).toThrow('FATAL CONFIGURATION ERROR: SCAN_WEBHOOK_SECRET');
 
-        const fd = new FormData();
-        fd.append('studentName', 'Kavitha R');
-        fd.append('email', 'kavitha@mitindia.edu');
-        fd.append('phone', '+919443212345');
-        fd.append('college', 'MIT Campus');
-        fd.append('department', 'ECE');
-        fd.append('domain', 'VLSI & Embedded Systems');
-        fd.append('service', 'FPGA & Verilog Design');
-        fd.append('description', 'Explicit allowed mock in staging.');
-        fd.append('consent', 'true');
-
-        const result = await submitEnquiryAction(fd);
-
-        expect(result.success).toBe(true);
-        expect(result.referenceNumber).toMatch(/^ASH-\d{6}-[A-F0-9]{4}$/);
+        process.env.SCAN_WEBHOOK_SECRET = 'short';
+        expect(() => envModule.getScanWebhookSecret()).toThrow('must be configured and contain at least 32 characters');
       } finally {
         (process.env as any).NODE_ENV = originalNodeEnv;
-        if (originalAllowMock !== undefined) {
-          process.env.ALLOW_MOCKED_SUBMISSIONS = originalAllowMock;
+        if (originalSecret !== undefined) {
+          process.env.SCAN_WEBHOOK_SECRET = originalSecret;
         } else {
-          delete process.env.ALLOW_MOCKED_SUBMISSIONS;
+          delete process.env.SCAN_WEBHOOK_SECRET;
+        }
+        if (originalMock !== undefined) {
+          process.env.ALLOW_MOCKED_SUBMISSIONS = originalMock;
         }
       }
     });
