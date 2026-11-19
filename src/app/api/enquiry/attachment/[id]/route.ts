@@ -29,6 +29,20 @@ export async function GET(
       return NextResponse.json({ error: 'Attachment not found' }, { status: 404 });
     }
 
+    // Security quarantine verification:
+    // Only verified CLEAN files are permitted for authorized download.
+    if (attachment.scanStatus !== 'CLEAN') {
+      return NextResponse.json(
+        {
+          error:
+            'Access denied: This attachment is quarantined or pending security analysis.',
+          scanStatus: attachment.scanStatus,
+          scanDetails: attachment.scanDetails,
+        },
+        { status: 423 } // 423 Locked
+      );
+    }
+
     const download = await getAttachmentDownload(attachment.storageKey);
 
     if (download.signedUrl) {

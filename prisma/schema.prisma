@@ -1,5 +1,5 @@
 // ASHKRI ACADEMIC SOLUTIONS
-// Master Prisma Database Schema — Phase 3 (Backend & Enquiry Infrastructure)
+// Master Prisma Database Schema — Phase 3 Production Hardening
 // Optimized for Neon PostgreSQL (ap-southeast-1)
 
 generator client {
@@ -28,6 +28,19 @@ enum EnquiryStatus {
   CANCELLED
 }
 
+enum AttachmentScanStatus {
+  CLEAN
+  QUARANTINED
+  PENDING_SCAN
+}
+
+enum OutboxStatus {
+  PENDING
+  DELIVERED
+  FAILED
+  DEAD_LETTER
+}
+
 // -------------------------------------------------------------
 // CORE ENQUIRY ENTITIES (PHASE 3)
 // -------------------------------------------------------------
@@ -35,6 +48,7 @@ enum EnquiryStatus {
 model Enquiry {
   id               String        @id @default(uuid())
   referenceNumber  String        @unique // Format: ASH-YYYYMM-XXXX
+  idempotencyKey   String?       @unique @db.VarChar(128) // Atomic DB-level duplicate prevention
   studentName      String        @db.VarChar(120)
   email            String        @db.VarChar(255)
   phone            String        @db.VarChar(20)
@@ -48,7 +62,7 @@ model Enquiry {
   expectedDeadline DateTime?
   status           EnquiryStatus @default(NEW)
   consentGiven     Boolean       @default(false)
-  ipHash           String?       @db.VarChar(64) // SHA-256 hash of IP + salt for rate-limiting
+  ipHash           String?       @db.VarChar(64) // Salted SHA-256 hash of verified client IP
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -57,6 +71,7 @@ model Enquiry {
   attachments   EnquiryAttachment[]
   statusHistory EnquiryStatusHistory[]
   emailEvents   EmailEvent[]
+  outboxEmails  EmailOutbox[]
 
   @@index([email])
   @@index([status])
@@ -93,18 +108,21 @@ model EnquiryNote {
 }
 
 model EnquiryAttachment {
-  id           String   @id @default(uuid())
+  id           String               @id @default(uuid())
   enquiryId    String
-  originalName String   @db.VarChar(255)
-  storageKey   String   @unique // Private S3/R2 storage path (UUID-based)
-  mimeType     String   @db.VarChar(100)
+  originalName String               @db.VarChar(255)
+  storageKey   String               @unique // Private S3/R2 storage path (UUID-based)
+  mimeType     String               @db.VarChar(100)
   sizeBytes    Int
-  checksum     String   @db.VarChar(64) // SHA-256 hash of file content
-  uploadedAt   DateTime @default(now())
+  checksum     String               @db.VarChar(64) // SHA-256 hash of file content
+  scanStatus   AttachmentScanStatus @default(CLEAN)
+  scanDetails  String?              @db.VarChar(255)
+  uploadedAt   DateTime             @default(now())
 
   enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
 
   @@index([enquiryId])
+  @@index([scanStatus])
 }
 
 model EmailEvent {
@@ -120,4 +138,45 @@ model EmailEvent {
   enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
 
   @@index([enquiryId])
+}
+
+// -------------------------------------------------------------
+// TRANSACTIONAL EMAIL OUTBOX (DURABLE RETRIES)
+// -------------------------------------------------------------
+
+model EmailOutbox {
+  id             String       @id @default(uuid())
+  enquiryId      String
+  idempotencyKey String       @unique @db.VarChar(128) // Unique per enquiry + template
+  recipient      String       @db.VarChar(255)
+  subject        String       @db.VarChar(255)
+  templateName   String       @db.VarChar(50)
+  payloadJson    String       @db.Text // JSON payload for rendering
+  status         OutboxStatus @default(PENDING)
+  attempts       Int          @default(0)
+  maxAttempts    Int          @default(3)
+  nextRetryAt    DateTime     @default(now())
+  deliveredAt    DateTime?
+  errorReason    String?      @db.Text
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextRetryAt])
+  @@index([enquiryId])
+}
+
+// -------------------------------------------------------------
+// DISTRIBUTED ATOMIC RATE LIMITING
+// -------------------------------------------------------------
+
+model RateLimitRecord {
+  key       String   @id @db.VarChar(128) // Salted IP hash or route key
+  count     Int      @default(1)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([expiresAt])
 }

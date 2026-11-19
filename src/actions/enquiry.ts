@@ -1,10 +1,17 @@
 'use server';
 
+import crypto from 'node:crypto';
 import { headers } from 'next/headers';
 import prisma from '@/lib/prisma';
-import { hashIp, checkRateLimit } from '@/lib/rate-limit';
+import { hashIp, checkDistributedRateLimit } from '@/lib/rate-limit';
+import { extractClientIp, isLocalhostIp } from '@/lib/trusted-proxy';
 import { EnquiryInputSchema, generateReferenceNumber } from '@/lib/validation/enquiry';
-import { validateAttachment, storeAttachment } from '@/lib/storage';
+import {
+  validateAttachment,
+  storeAttachment,
+  deleteStoredAttachment,
+  StoredAttachmentResult,
+} from '@/lib/storage';
 import { sendEnquiryNotifications } from '@/lib/email';
 import { isDatabaseConfigured } from '@/lib/env';
 
@@ -16,33 +23,25 @@ export interface ActionResponse {
 }
 
 export async function submitEnquiryAction(formData: FormData): Promise<ActionResponse> {
+  let storedAttachment: StoredAttachmentResult | null = null;
+
   try {
-    // 1. Extract client IP securely
+    // 1. Extract client IP securely using trusted proxy resolution
     let clientIp = '127.0.0.1';
     try {
       const headerList = await headers();
-      const forwarded = headerList.get('x-forwarded-for');
-      if (forwarded) {
-        clientIp = forwarded.split(',')[0].trim();
-      } else {
-        clientIp = headerList.get('x-real-ip') || '127.0.0.1';
-      }
+      clientIp = extractClientIp(headerList);
     } catch {
       // In non-request execution contexts (e.g. unit tests), fallback to localhost
       clientIp = '127.0.0.1';
     }
 
-    const normalizedIp = clientIp.replace(/^::ffff:/, '');
-    const ipHash = hashIp(normalizedIp);
-    const isLocalhost =
-      normalizedIp === '127.0.0.1' ||
-      normalizedIp === '::1' ||
-      normalizedIp === 'localhost' ||
-      normalizedIp.startsWith('192.168.') ||
-      normalizedIp.startsWith('10.');
+    const isLocalhost = isLocalhostIp(clientIp);
+    const ipHash = hashIp(clientIp);
 
-    // 2. Enforce token-bucket rate limiting (5 submissions / 15 minutes for public visitors, 100 for localhost / automated tests)
-    const rateLimit = checkRateLimit(ipHash, 5, 15 * 60 * 1000, isLocalhost);
+    // 2. Enforce distributed atomic rate limiting
+    // (5 submissions / 15 minutes for public visitors, 100 for localhost / automated tests)
+    const rateLimit = await checkDistributedRateLimit(ipHash, 5, 15 * 60 * 1000, isLocalhost);
     if (!rateLimit.success) {
       return {
         success: false,
@@ -93,7 +92,7 @@ export async function submitEnquiryAction(formData: FormData): Promise<ActionRes
 
     const validData = validationResult.data;
 
-    // 5. Bot honeypot check (silently drop or reject bot submissions)
+    // 5. Bot honeypot check
     if (validData.honeypot && validData.honeypot.trim().length > 0) {
       return {
         success: false,
@@ -130,119 +129,168 @@ export async function submitEnquiryAction(formData: FormData): Promise<ActionRes
 
     // 7. Check database configuration
     if (!isDatabaseConfigured()) {
-      // In dev, test suites, or pre-delegation CI before Neon production database credentials are attached
-      if (process.env.VERCEL_ENV !== 'production') {
-        console.info(
-          `[LOCAL/TEST DATABASE NOTICE] DATABASE_URL not configured. Processed enquiry for ${validData.studentName} (${referenceNumber}).`
-        );
+      const isAllowedMock =
+        process.env.NODE_ENV === 'test' || process.env.ALLOW_MOCKED_SUBMISSIONS === 'true';
+
+      if (isAllowedMock) {
         return {
           success: true,
           referenceNumber,
         };
       }
+
       return {
         success: false,
         error: 'Database service is currently unavailable. Please contact us directly via email or Telegram.',
       };
     }
 
-    // 8. Check for duplicate submission (same email + same description in last 15 minutes)
-    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
-    const existingDuplicate = await prisma.enquiry.findFirst({
-      where: {
-        email: validData.email,
-        description: validData.description,
-        createdAt: { gte: fifteenMinutesAgo },
-      },
-    });
+    // 8. Calculate deterministic idempotency key for atomic duplicate prevention
+    const clientToken = formData.get('idempotencyKey')?.toString().trim();
+    const payloadFingerprint = crypto
+      .createHash('sha256')
+      .update(
+        [
+          validData.email.toLowerCase().trim(),
+          validData.phone.trim(),
+          validData.domain,
+          validData.service,
+          validData.description.trim(),
+        ].join('|')
+      )
+      .digest('hex');
 
-    if (existingDuplicate) {
-      return {
-        success: true,
-        referenceNumber: existingDuplicate.referenceNumber,
-      };
+    const idempotencyKey = clientToken
+      ? `${clientToken.slice(0, 64)}_${payloadFingerprint.slice(0, 32)}`
+      : `idem_${payloadFingerprint}`;
+
+    // 9. Pre-upload file to storage if present (before DB transaction)
+    const enquiryId = crypto.randomUUID();
+
+    if (attachmentBuffer && originalFilename) {
+      storedAttachment = await storeAttachment(
+        enquiryId,
+        originalFilename,
+        mimeType,
+        attachmentBuffer
+      );
     }
 
-    // 9. Persist enquiry inside a Prisma transaction
-    const newEnquiry = await prisma.$transaction(async (tx) => {
-      const enquiry = await tx.enquiry.create({
-        data: {
-          referenceNumber,
-          studentName: validData.studentName,
-          email: validData.email,
-          phone: validData.phone,
-          college: validData.college,
-          department: validData.department,
-          domain: validData.domain,
-          service: validData.service,
-          projectTitle: validData.projectTitle ?? null,
-          description: validData.description,
-          approxBudget: validData.approxBudget ?? null,
-          expectedDeadline: validData.expectedDeadline ?? null,
-          consentGiven: validData.consent,
-          ipHash,
-        },
-      });
-
-      // Record initial status history
-      await tx.enquiryStatusHistory.create({
-        data: {
-          enquiryId: enquiry.id,
-          fromStatus: 'NEW',
-          toStatus: 'NEW',
-          reason: 'Initial student consultation submission via website',
-        },
-      });
-
-      // Store attachment if present
-      if (attachmentBuffer && originalFilename) {
-        const stored = await storeAttachment(
-          enquiry.id,
-          originalFilename,
-          mimeType,
-          attachmentBuffer
-        );
-
-        await tx.enquiryAttachment.create({
+    // 10. Persist enquiry inside a Prisma transaction with compensating rollback
+    try {
+      const newEnquiry = await prisma.$transaction(async (tx) => {
+        const enquiry = await tx.enquiry.create({
           data: {
-            enquiryId: enquiry.id,
-            originalName: stored.originalName,
-            storageKey: stored.storageKey,
-            mimeType: stored.mimeType,
-            sizeBytes: stored.sizeBytes,
-            checksum: stored.checksum,
+            id: enquiryId,
+            referenceNumber,
+            idempotencyKey,
+            studentName: validData.studentName,
+            email: validData.email,
+            phone: validData.phone,
+            college: validData.college,
+            department: validData.department,
+            domain: validData.domain,
+            service: validData.service,
+            projectTitle: validData.projectTitle ?? null,
+            description: validData.description,
+            approxBudget: validData.approxBudget ?? null,
+            expectedDeadline: validData.expectedDeadline ?? null,
+            consentGiven: validData.consent,
+            ipHash,
           },
         });
+
+        // Record initial status history
+        await tx.enquiryStatusHistory.create({
+          data: {
+            enquiryId: enquiry.id,
+            fromStatus: 'NEW',
+            toStatus: 'NEW',
+            reason: 'Initial student consultation submission via website',
+          },
+        });
+
+        // Store attachment record if present
+        if (storedAttachment) {
+          await tx.enquiryAttachment.create({
+            data: {
+              enquiryId: enquiry.id,
+              originalName: storedAttachment.originalName,
+              storageKey: storedAttachment.storageKey,
+              mimeType: storedAttachment.mimeType,
+              sizeBytes: storedAttachment.sizeBytes,
+              checksum: storedAttachment.checksum,
+              scanStatus: 'CLEAN',
+            },
+          });
+        }
+
+        return enquiry;
+      });
+
+      // 11. Dispatch durable outbox notifications
+      await sendEnquiryNotifications({
+        enquiryId: newEnquiry.id,
+        referenceNumber: newEnquiry.referenceNumber,
+        studentName: newEnquiry.studentName,
+        email: newEnquiry.email,
+        phone: newEnquiry.phone,
+        college: newEnquiry.college,
+        department: newEnquiry.department,
+        domain: newEnquiry.domain,
+        service: newEnquiry.service,
+        approxBudget: newEnquiry.approxBudget,
+        expectedDeadline: newEnquiry.expectedDeadline,
+        description: newEnquiry.description,
+        attachmentName: originalFilename || null,
+      });
+
+      return {
+        success: true,
+        referenceNumber: newEnquiry.referenceNumber,
+      };
+    } catch (dbError) {
+      // Compensating storage cleanup: if DB transaction fails, delete any uploaded object
+      if (storedAttachment) {
+        try {
+          await deleteStoredAttachment(storedAttachment.storageKey);
+        } catch (cleanupErr) {
+          console.warn('[Storage Cleanup Failed]', (cleanupErr as Error).message);
+        }
       }
 
-      return enquiry;
-    });
+      // Check for concurrent duplicate submission (PostgreSQL P2002 on idempotencyKey)
+      const prismaErr = dbError as { code?: string };
+      if (prismaErr.code === 'P2002') {
+        const existing = await prisma.enquiry.findUnique({
+          where: { idempotencyKey },
+          select: { referenceNumber: true },
+        });
 
-    // 10. Dispatch asynchronous email notifications
-    sendEnquiryNotifications({
-      enquiryId: newEnquiry.id,
-      referenceNumber: newEnquiry.referenceNumber,
-      studentName: newEnquiry.studentName,
-      email: newEnquiry.email,
-      phone: newEnquiry.phone,
-      college: newEnquiry.college,
-      department: newEnquiry.department,
-      domain: newEnquiry.domain,
-      service: newEnquiry.service,
-      approxBudget: newEnquiry.approxBudget,
-      expectedDeadline: newEnquiry.expectedDeadline,
-      description: newEnquiry.description,
-      attachmentName: originalFilename || null,
-    }).catch((err) => {
-      console.error('[Async Email Error]', (err as Error).message);
-    });
+        if (existing) {
+          return {
+            success: true,
+            referenceNumber: existing.referenceNumber,
+          };
+        }
+      }
 
-    return {
-      success: true,
-      referenceNumber: newEnquiry.referenceNumber,
-    };
+      console.error('[Enquiry DB Transaction Error]', (dbError as Error).message);
+      return {
+        success: false,
+        error: 'Failed to record enquiry due to a database error. Please try again.',
+      };
+    }
   } catch (error) {
-    // Avoid exposing raw database errors or stack traces to client
+    // If any failure occurred outside transaction but after storage upload, clean up
+    if (storedAttachment) {
+      try {
+        await deleteStoredAttachment(storedAttachment.storageKey);
+      } catch (cleanupErr) {
+        console.warn('[Storage Cleanup Failed]', (cleanupErr as Error).message);
+      }
+    }
+
     console.error('[Enquiry Submission Error]', error);
     return {
       success: false,

@@ -211,7 +211,7 @@ export function ContactForm() {
             Your enquiry has been successfully logged
           </h3>
           <p className="text-xs sm:text-sm text-ink-secondary max-w-lg mx-auto font-body leading-relaxed">
-            Your consultation request has been recorded in our engineering database. An academic coordinator has been notified and will evaluate your project scope within 24 hours. Keep your reference number below for direct tracking:
+            Your consultation request has been recorded in our engineering database. An academic coordinator has been notified and will evaluate your project scope within 24 business hours (Mon – Sat, 9:00 AM – 6:00 PM IST). Keep your reference number below for direct tracking:
           </p>
         </div>
 

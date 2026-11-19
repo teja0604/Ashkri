@@ -41,7 +41,7 @@ describe('Email Notification Templates', () => {
 
     expect(html).toContain('Dear Sanjay Krishnan');
     expect(html).toContain('ASH-202611-X7P2');
-    expect(html).toContain('Guaranteed Review Within 24 Hours');
+    expect(html).toContain('Review Within 24 Business Hours (Mon – Sat, 9:00 AM – 6:00 PM IST)');
     expect(html).toContain('@Ashkri_Technologies');
     expect(html).toContain('+919876501234');
     expect(html).toContain('Academic Confidentiality');

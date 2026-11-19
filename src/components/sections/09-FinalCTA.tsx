@@ -57,7 +57,7 @@ export function FinalCTASection() {
             </div>
 
             <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap items-center gap-3 sm:gap-6 text-xs text-[#B9C1C8] font-heading">
-              <span>Direct Response Window: <strong className="text-white">Within 24 Hours</strong></span>
+              <span>Direct Response Window: <strong className="text-white">Within 24 Business Hours</strong></span>
               <span className="hidden sm:inline">·</span>
               <span>Confidentiality Guaranteed</span>
               <span className="hidden sm:inline">·</span>
